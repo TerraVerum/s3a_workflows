@@ -11,7 +11,7 @@ from skimage.measure import regionprops_table, regionprops
 from tqdm import tqdm
 from utilitys import fns
 
-FPIC_FOLDER = Path.home()/'Desktop/fpic_mockup/FPIC'
+FPIC_FOLDER = Path.home()/'Dropbox (UFL)/Optical Images/FPIC'
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
 def read_cleaned_annotation(ann_file, designator_count=2, return_blanks=False):
@@ -78,10 +78,14 @@ def single_iter(file, out_folder, **kwargs):
 
 def create_all_annotation_features(out_folder):
   files = list(SMD_FOLDER.glob('*.csv'))
-  fns.mproc_apply(single_iter, files, out_folder=out_folder, debug=True)
+  fns.mproc_apply(single_iter, files, out_folder=out_folder)
+
+def create_all_cleaned_annotations(out_file):
+  files = list(SMD_FOLDER.glob('*.csv'))
+  df = pd.concat(fns.mproc_apply(single_iter, files, return_blanks=True, designator_counts=0))
 
 if __name__ == '__main__':
-    out_dir = FPIC_FOLDER.parent/'smd_features/'
+    out_dir = Path.home()/'Desktop/smd_features/'
     out_dir.mkdir(exist_ok=True)
     create_all_annotation_features(out_dir)
     brep = 1
