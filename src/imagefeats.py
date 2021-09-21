@@ -1,29 +1,42 @@
 from __future__ import annotations
-import typing as t
-from s3a import TableData, ComponentIO, REQD_TBL_FIELDS as RTF
-import pandas as pd
+
+from pathlib import Path
+
+import cv2 as cv
 import numpy as np
+import pandas as pd
+from autobom.constants import TEMPLATES_DIR
+from s3a import TableData, ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.exporters import SerialExporter
 from s3a.compio.importers import SerialImporter
-from sklearn.decomposition import PCA
+from s3a.generalutils import pd_iterdict
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from utilitys import fns
-from pathlib import Path
-from autobom.constants import TEMPLATES_DIR
 
 from src.utils import ExportDir, RegisteredPath
+
+DEFAULT_IMAGE_FEATURE_CONFIG = dict(
+    shape=(50,50),
+    keepAspectRatio=True,
+
+)
 
 class ImageFeatureWorkflow(ExportDir):
     formatted_input_path = RegisteredPath()
     comp_imgs_path = RegisteredPath()
     designator_labels_file = RegisteredPath('.csv')
     comp_imgs_file = RegisteredPath('.pkl')
+    comp_imgs_rotated_file = RegisteredPath('.pkl')
 
-    def __init__(self, folder: Path | str):
+    def __init__(self, folder: Path | str, config: dict=None):
         super().__init__(folder)
         td = TableData(cfgDict=fns.attemptFileLoad(TEMPLATES_DIR/'proj_smd.s3aprj'))
         self.io = ComponentIO(td)
         self.desig_col = td.fieldFromName('Designator')
+
+        if config is None:
+            config = DEFAULT_IMAGE_FEATURE_CONFIG
+        self.config = config
 
     @property
     def formatted_input_files(self):
@@ -61,8 +74,8 @@ class ImageFeatureWorkflow(ExportDir):
             df,
             (self.comp_imgs_path / name).with_suffix('.pkl'),
             srcDir=Path.home()/'Dropbox (UFL)/Optical Images/FPIC/pcb_image',
-            resizeOpts=dict(shape=(50,50)),
-            labelField=self.desig_col
+            resizeOpts=self.config,
+            labelField=self.desig_col,
         )
 
     def make_all_image_features(self):
@@ -70,17 +83,50 @@ class ImageFeatureWorkflow(ExportDir):
         fns.mproc_apply(self.make_single_image_features, self.formatted_input_files)
 
     def merge_comp_imgs(self):
-        feats_concat = pd.concat([pd.read_pickle(f) for f in self.comp_imgs_path.glob('*.pkl')])
+        feats_concat = pd.concat([pd.read_pickle(f) for f in self.comp_imgs_path.glob('*.pkl')], ignore_index=True)
         feats_concat.to_pickle(self.comp_imgs_file)
         return feats_concat
 
-    def make_image_ldafeatures(self, df=None):
+    def create_rotated_features(self, df=None):
         if df is None:
             df = pd.read_pickle(self.comp_imgs_file)
-        feats = np.vstack(df.image.apply(np.ndarray.ravel))
+        else:
+            df = df.copy()
+        df['rotated'] = False
+        for idx, row in pd_iterdict(df, index=True):
+            on_pixs = np.nonzero(row['labelMask'])
+            spans = [np.ptp(pixs) for pixs in on_pixs]
+            # If width has a larger span than height, rotate so all components have the same preferred component
+            # aspect
+            if spans[1] > spans[0]:
+                for kk in 'image', 'labelMask':
+                    df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
+                df.at[idx, 'rotated'] = True
+        df.to_pickle(self.comp_imgs_rotated_file)
+
+    def get_feats_labels(self, df: pd.DataFrame=None, return_df=False):
+        if df is None:
+            df = pd.read_pickle(self.comp_imgs_file)
+        feats = np.vstack(df['image'].apply(np.ndarray.ravel))
         desigs = self.create_get_designator_mapping()
         inverse = pd.Series(index=desigs.values, data=desigs.index)
-        labels = inverse[df.label.to_numpy()]
+        labels = inverse[df['label'].to_numpy()].values
+        if return_df:
+            return feats, labels, df
+        return feats, labels
+
+    def plot_model_rep(self, samples_df: pd.DataFrame, trained_model):
+        """samples_df must resemble the return value of ``exportCompImgsDf`` with ('label', 'image') columns at least"""
+        feats, _ = self.get_feats_labels(samples_df)
+        compare = trained_model.inverse_transform(trained_model.predict(feats))
+        cmp_images = []
+        for cmp in compare:
+            cmp_images.append(cmp.reshape(*self.config['shape'], -1))
+
+
+
+    def make_image_lda_features(self, df=None):
+        feats, labels, df = self.get_feats_labels(df, return_df=True)
 
         lda = LinearDiscriminantAnalysis()
         xformed = lda.fit_transform(feats, labels)
@@ -103,4 +149,5 @@ class ImageFeatureWorkflow(ExportDir):
 
 if __name__ == '__main__':
     workflow = ImageFeatureWorkflow(Path.home()/'Desktop/rgb_features')
-    workflow.make_image_pca_features()
+    df = workflow.merge_comp_imgs()
+    workflow.create_rotated_features(df)
