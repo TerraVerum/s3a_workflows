@@ -4,10 +4,12 @@ import re
 import typing as t
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtWidgets, QtCore
+from s3a.processing import ImageProcess
 from sklearn.decomposition import PCA
 from utilitys import widgets, RunOpts, ParamContainer, PrjParam
 
@@ -72,6 +74,9 @@ class NComponentVisualizer(widgets.ImageViewer):
 
     def __init__(self, samples_df: pd.DataFrame, model=None, **kwargs):
         samples_df = samples_df.reset_index(drop=True)
+        # Keep reference to colorbar plot if shown else garbage collection will occur
+        self.active_colorbar = None
+
 
         if model is None:
             model = PCA()
@@ -128,6 +133,17 @@ class NComponentVisualizer(widgets.ImageViewer):
             runOpts=RunOpts.ON_CHANGING,
             container=self.props
         )
+        self.toolsEditor.registerFunc(
+            self.plot_components,
+        )
+        self.toolsEditor.registerFunc(
+            self.show_colorbar
+        )
+
+
+        def spawn():
+            widgets.safeSpawnDevConsole(self)
+        self.toolsEditor.registerFunc(spawn, name='Dev Console')
 
         limits = {kk: vv for kk, vv in zip(samples_df['label'], samples_df.index)}
         self.props.params['sample_index'].setOpts(limits=limits)
@@ -168,6 +184,43 @@ class NComponentVisualizer(widgets.ImageViewer):
             self.setImage(self.samples_df.at[self.props['sample_index'], 'image'])
         else:
             self.try_n_components(self.props['n_components'])
+
+    def plot_components(self, n_components=9):
+        infos = []
+        for ii, component in enumerate(self.model.components_[:n_components]):
+            infos.append(dict(
+                image=np.abs(component.reshape(*self.image_shape)),
+                name=f'Component {ii+1}'
+            ))
+        oldOpts = dict(foreground=pg.getConfigOption('foreground'), background=pg.getConfigOption('background'))
+        try:
+            pg.setConfigOptions(foreground='k', background='w')
+            dummy = ImageProcess()
+            dummy.getAllStageInfos = lambda *args, **kwds: infos
+            dummy.stageSummary_gui()
+        finally:
+            pg.setConfigOptions(**oldOpts)
+
+
+    def show_colorbar(self):
+        shape = self.image_shape
+        if len(shape) == 2:
+            shape = (*shape, 1)
+        nchans = shape[-1]
+        bar = []
+        for comp in self.model.components_:
+            mean = np.mean(np.abs(comp.reshape(-1, nchans)), axis=0)
+            bar.append(mean/np.max(mean))
+        bar = np.vstack(bar)
+        bar *= self.model.explained_variance_ratio_[:, None]
+        bar /= bar.max()
+        width = np.prod(shape)
+        plt.imshow(bar.reshape(1, -1, nchans), extent=[0, width, 0, 0.05*width])
+        plt.gca().get_yaxis().set_visible(False)
+        plt.title('Mean color of absolute PCA weights, with variance weighting')
+        plt.xlabel('Component #')
+        plt.show()
+
 
 
 if __name__ == '__main__':
