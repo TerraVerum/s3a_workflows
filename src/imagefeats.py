@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pickle
 from pathlib import Path
 
 import cv2 as cv
@@ -11,6 +12,7 @@ from s3a.compio.exporters import SerialExporter
 from s3a.compio.importers import SerialImporter
 from s3a.generalutils import pd_iterdict
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from tqdm import tqdm
 from utilitys import fns
 
 from src.utils import ExportDir, RegisteredPath
@@ -26,7 +28,7 @@ class ImageFeatureWorkflow(ExportDir):
     comp_imgs_path = RegisteredPath()
     designator_labels_file = RegisteredPath('.csv')
     comp_imgs_file = RegisteredPath('.pkl')
-    comp_imgs_rotated_file = RegisteredPath('.pkl')
+    comp_imgs_oriented_file = RegisteredPath('.pkl')
 
     def __init__(self, folder: Path | str, config: dict=None):
         super().__init__(folder)
@@ -83,7 +85,12 @@ class ImageFeatureWorkflow(ExportDir):
         fns.mproc_apply(self.make_single_image_features, self.formatted_input_files)
 
     def merge_comp_imgs(self):
-        feats_concat = pd.concat([pd.read_pickle(f) for f in self.comp_imgs_path.glob('*.pkl')], ignore_index=True)
+        all_dfs = []
+        for file in self.comp_imgs_path.glob('*.pkl'):
+            subdf = pd.read_pickle(file)
+            subdf['sourceFile'] = file.stem
+            all_dfs.append(subdf)
+        feats_concat = pd.concat(all_dfs, ignore_index=True)
         feats_concat.to_pickle(self.comp_imgs_file)
         return feats_concat
 
@@ -93,8 +100,11 @@ class ImageFeatureWorkflow(ExportDir):
         else:
             df = df.copy()
         df['rotated'] = False
-        for idx, row in pd_iterdict(df, index=True):
-            on_pixs = np.nonzero(row['labelMask'])
+        mapping = self.create_get_designator_mapping()
+        for idx, row in tqdm(pd_iterdict(df, index=True), desc='Reorienting', total=len(df)):
+            numeric_lbl = mapping.index[np.argmax(mapping == row['label'])]
+            bool_mask = row['labelMask'] == numeric_lbl
+            on_pixs = np.nonzero(bool_mask)
             spans = [np.ptp(pixs) for pixs in on_pixs]
             # If width has a larger span than height, rotate so all components have the same preferred component
             # aspect
@@ -102,11 +112,12 @@ class ImageFeatureWorkflow(ExportDir):
                 for kk in 'image', 'labelMask':
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
                 df.at[idx, 'rotated'] = True
-        df.to_pickle(self.comp_imgs_rotated_file)
+        df.to_pickle(self.comp_imgs_oriented_file)
+        return df
 
     def get_feats_labels(self, df: pd.DataFrame=None, return_df=False):
         if df is None:
-            df = pd.read_pickle(self.comp_imgs_file)
+            df = pd.read_pickle(self.comp_imgs_oriented_file)
         feats = np.vstack(df['image'].apply(np.ndarray.ravel))
         desigs = self.create_get_designator_mapping()
         inverse = pd.Series(index=desigs.values, data=desigs.index)
@@ -144,10 +155,21 @@ class ImageFeatureWorkflow(ExportDir):
         self.create_formatted_inputs(df)
         self.make_all_image_features()
         merged = self.merge_comp_imgs()
-        feats = self.make_image_pca_features(merged)
+        oriented = self.create_rotated_features(merged)
+
+        feats = self.make_image_lda_features(oriented)
+
 
 
 if __name__ == '__main__':
+    from utils import NComponentVisualizer
+    from sklearn.decomposition import PCA
     workflow = ImageFeatureWorkflow(Path.home()/'Desktop/rgb_features')
-    df = workflow.merge_comp_imgs()
-    workflow.create_rotated_features(df)
+    df = pd.read_pickle(workflow.comp_imgs_oriented_file)
+    feats, _ = workflow.get_feats_labels(df)
+
+    pca = PCA()
+    pca.fit(feats)
+    with open('pca.pkl', 'wb') as ofile:
+        pickle.dump(pca, ofile)
+    viz = NComponentVisualizer(df, pca)

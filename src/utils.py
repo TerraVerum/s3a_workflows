@@ -79,7 +79,8 @@ class NComponentVisualizer(widgets.ImageViewer):
             features = np.vstack(samples_df['image'].apply(np.ndarray.ravel))
             model.fit(features)
 
-        samples_df = samples_df.groupby('label').apply(lambda el: el.sample(n=1)).reset_index(drop=True)
+        # Avoid too much representative data by just keeping one sample from each label
+        samples_df = samples_df.groupby('label').apply(lambda el: el.sample(n=1, random_state=42)).reset_index(drop=True)
 
         super().__init__(samples_df.at[0, 'image'], **kwargs)
         self.samples_df = samples_df
