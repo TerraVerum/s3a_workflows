@@ -2,16 +2,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from s3a import ComplexXYVertices, ComponentIO
-from s3a.parameditors.table import TableData
 from autobom.constants import TEMPLATES_DIR
-
-# FPIC_FOLDER = Path('/shared/FPIC/')
+from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
+from s3a.parameditors.table import TableData
 from skimage.measure import regionprops_table, regionprops
-from tqdm import tqdm
 from utilitys import fns
 
-FPIC_FOLDER = Path.home()/'Dropbox (UFL)/Optical Images/FPIC'
+from src.constants import FPIC_FOLDER
+
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
 def read_cleaned_annotation(ann_file, designator_count=2, return_blanks=False):
@@ -23,7 +21,7 @@ def read_cleaned_annotation(ann_file, designator_count=2, return_blanks=False):
     - Can threshold to only return designators with a certain count
   """
   df = pd.read_csv(ann_file, dtype=str, na_filter=False)
-  ccnum = df['Source Image Filename'].apply(lambda el: int(el.split('_')[3])).values
+  ccnum = df[RTF.IMG_FILE.name].apply(lambda el: int(el.split('_')[3])).values
   # Keep only the ideal subset of data, i.e. ignore the environmental illumination study items
   non_duplicate = (ccnum == 4) | (ccnum > 10)
   subset = df[non_duplicate]

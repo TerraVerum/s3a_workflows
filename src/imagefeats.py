@@ -11,10 +11,12 @@ from s3a import TableData, ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.exporters import SerialExporter
 from s3a.compio.importers import SerialImporter
 from s3a.generalutils import pd_iterdict
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from tqdm import tqdm
 from utilitys import fns
 
+from src.constants import FPIC_FOLDER
 from src.utils import ExportDir, RegisteredPath
 
 DEFAULT_IMAGE_FEATURE_CONFIG = dict(
@@ -24,14 +26,28 @@ DEFAULT_IMAGE_FEATURE_CONFIG = dict(
 )
 
 class ImageFeatureWorkflow(ExportDir):
+    """
+    Prescribes a workflow for generating data sufficient for SMD designator descrimination unit.
+    The final output is a pickled dataframe of component images as well as a populated directory with
+    most intermediate steps, and some fitted data transformers. See `run` for more information
+    """
     formatted_input_path = RegisteredPath()
     comp_imgs_path = RegisteredPath()
     designator_labels_file = RegisteredPath('.csv')
     comp_imgs_file = RegisteredPath('.pkl')
     comp_imgs_oriented_file = RegisteredPath('.pkl')
 
-    def __init__(self, folder: Path | str, config: dict=None):
-        super().__init__(folder)
+    transformers_path = RegisteredPath()
+
+    def __init__(self, workflow_folder: Path | str, config: dict=None):
+        """
+        Initializes the workflow with a location and set of data parameters
+
+        :param workflow_folder: Where to generate the training outputs. Should either be empty or not exist to avoid accidentally
+            overwriting any files
+        :param config: Configuration for generating data. See ``DEFAULT_IMAGE_FEATURE_CONFIG`` for valid options
+        """
+        super().__init__(workflow_folder)
         td = TableData(cfgDict=fns.attemptFileLoad(TEMPLATES_DIR/'proj_smd.s3aprj'))
         self.io = ComponentIO(td)
         self.desig_col = td.fieldFromName('Designator')
@@ -42,14 +58,24 @@ class ImageFeatureWorkflow(ExportDir):
 
     @property
     def formatted_input_files(self):
+        """
+        Helper property to act like a list of files from the cleansed inputs
+        """
         return list(self.formatted_input_path.glob('*.csv'))
 
     def create_formatted_inputs(self, df: pd.DataFrame):
+        """
+        Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
+        by image to allow multiprocessing on subsections of components
+        """
         df['Designator'] = df['Designator'].str.strip().str.upper()
-        for image, subdf in df.groupby(RTF.SRC_IMG_FILENAME.name): # type: str, pd.DataFrame
+        for image, subdf in df.groupby(RTF.IMG_FILE.name): # type: str, pd.DataFrame
             SerialExporter.writeFile(self.formatted_input_path/(image + '.csv'), subdf, readonly=False)
 
     def create_get_designator_mapping(self):
+        """
+        Creates a complete list of all designators from the cleaned input
+        """
         if self.designator_labels_file.exists():
             return pd.read_csv(
                 self.designator_labels_file,
@@ -69,13 +95,16 @@ class ImageFeatureWorkflow(ExportDir):
         return info_df['Designator']
 
     def make_single_image_features(self, file):
+        """
+        Turns a csv annotation of a single image into a dataframe of cropped components from that image
+        """
         name = file.name
         df = self.io.importCsv(file)
         df.columns[df.columns.get_loc(self.desig_col)].opts['limits'] = self.create_get_designator_mapping().to_list()
         self.io.exportCompImgsDf(
             df,
             (self.comp_imgs_path / name).with_suffix('.pkl'),
-            srcDir=Path.home()/'Dropbox (UFL)/Optical Images/FPIC/pcb_image',
+            srcDir=FPIC_FOLDER/'pcb_image',
             resizeOpts=self.config,
             labelField=self.desig_col,
         )
@@ -85,6 +114,10 @@ class ImageFeatureWorkflow(ExportDir):
         fns.mproc_apply(self.make_single_image_features, self.formatted_input_files)
 
     def merge_comp_imgs(self):
+        """
+        After single image features are created, this merges the results into a single dataframe for easier reading
+        later
+        """
         all_dfs = []
         for file in self.comp_imgs_path.glob('*.pkl'):
             subdf = pd.read_pickle(file)
@@ -95,6 +128,10 @@ class ImageFeatureWorkflow(ExportDir):
         return feats_concat
 
     def create_rotated_features(self, df=None):
+        """
+        Ensures the width of all SMD components is less than the height (i.e. every component will have a "vertical"
+        alignment"
+        """
         if df is None:
             df = pd.read_pickle(self.comp_imgs_file)
         else:
@@ -116,6 +153,10 @@ class ImageFeatureWorkflow(ExportDir):
         return df
 
     def get_feats_labels(self, df: pd.DataFrame=None, return_df=False):
+        """
+        Turns a dataframe with X rows of MxNx3 component images into a (X x M*N*3) 2 dimensional array where
+        each pixel is a feature and each row is a new sample
+        """
         if df is None:
             df = pd.read_pickle(self.comp_imgs_oriented_file)
         feats = np.vstack(df['image'].apply(np.ndarray.ravel))
@@ -126,24 +167,28 @@ class ImageFeatureWorkflow(ExportDir):
             return feats, labels, df
         return feats, labels
 
-    def plot_model_rep(self, samples_df: pd.DataFrame, trained_model):
-        """samples_df must resemble the return value of ``exportCompImgsDf`` with ('label', 'image') columns at least"""
-        feats, _ = self.get_feats_labels(samples_df)
-        compare = trained_model.inverse_transform(trained_model.predict(feats))
-        cmp_images = []
-        for cmp in compare:
-            cmp_images.append(cmp.reshape(*self.config['shape'], -1))
 
+    def fit_save_transformer(self, transformer, feats_labels=None):
+        if feats_labels is None:
+            feats_labels = self.get_feats_labels()
+        transformer.fit(*feats_labels)
+        save_name = self.transformers_path / (type(transformer).__name__ + '.pkl')
+        with open(save_name, 'wb') as ofile:
+            pickle.dump(transformer, ofile)
+        return transformer
 
+    def fit_all_transformers(self, feats_labels=None):
+        if feats_labels is None:
+            feats_labels = self.get_feats_labels()
+        for xformer in PCA(), LDA():
+            self.fit_save_transformer(xformer, feats_labels)
 
-    def make_image_lda_features(self, df=None):
-        feats, labels, df = self.get_feats_labels(df, return_df=True)
-
-        lda = LinearDiscriminantAnalysis()
-        xformed = lda.fit_transform(feats, labels)
-        return xformed
 
     def run(self, annotation_path, reset=False):
+        """
+        Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
+        will show the order in which all processes should be run
+        """
         self.make_dirs()
         if reset:
             self.reset()
@@ -155,21 +200,10 @@ class ImageFeatureWorkflow(ExportDir):
         self.create_formatted_inputs(df)
         self.make_all_image_features()
         merged = self.merge_comp_imgs()
-        oriented = self.create_rotated_features(merged)
-
-        feats = self.make_image_lda_features(oriented)
-
+        self.create_rotated_features(merged)
+        self.fit_all_transformers()
 
 
 if __name__ == '__main__':
-    from utils import NComponentVisualizer
-    from sklearn.decomposition import PCA
     workflow = ImageFeatureWorkflow(Path.home()/'Desktop/rgb_features')
-    df = pd.read_pickle(workflow.comp_imgs_oriented_file)
-    feats, _ = workflow.get_feats_labels(df)
-
-    pca = PCA()
-    pca.fit(feats)
-    with open('pca.pkl', 'wb') as ofile:
-        pickle.dump(pca, ofile)
-    viz = NComponentVisualizer(df, pca)
+    workflow.run(FPIC_FOLDER/'smd_annotation', reset=True)
