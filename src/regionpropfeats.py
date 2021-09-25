@@ -78,7 +78,7 @@ class RegionPropsWorkflow(S3AFeatureWorkflow):
         fns.mproc_apply(self.text_ann_to_regionprops_csv, files[:1], return_df=False)
         # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)
-        df.to_csv(self.regionprop_features_file)
+        df.to_csv(self.regionprop_features_file, index=False)
         return df
 
     def feature_workflow(self):
