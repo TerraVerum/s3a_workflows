@@ -25,3 +25,5 @@ def _init_fpic_folder():
     return Path(fpic)
 
 FPIC_FOLDER = _init_fpic_folder()
+FPIC_SMDS =  FPIC_FOLDER/'smd_annotation'
+FPIC_IMAGES = FPIC_FOLDER/'pcb_image'

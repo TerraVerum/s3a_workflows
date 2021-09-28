@@ -74,12 +74,16 @@ class RegionPropsWorkflow(S3AFeatureWorkflow):
             return props_df
 
     def create_all_regionprops(self):
-        files = fns.naturalSorted(self.formatted_input_path.glob('*.csv'))
-        fns.mproc_apply(self.text_ann_to_regionprops_csv, files[:1], return_df=False)
+        fns.mproc_apply(self.text_ann_to_regionprops_csv, self.new_input_files, return_df=False)
         # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)
         df.to_csv(self.regionprop_features_file, index=False)
         return df
 
-    def feature_workflow(self):
+    def run(self, annotation_path):
+        """
+        Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
+        will show the order in which all processes should be run
+        """
+        self.create_formatted_inputs(annotation_path)
         self.create_all_regionprops()
