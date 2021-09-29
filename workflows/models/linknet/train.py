@@ -101,7 +101,7 @@ class LinkNetWorkflow(WorkflowDir):
         train_steps, val_steps, test_steps = [len(g) for g in generators]
 
         # Same for all generators
-        num_output_classes = train_generator.num_output_classes + 1
+        num_output_classes = train_generator.num_output_classes
         with (strategy.scope()):
             mean_iou = MeanIoU(num_classes=num_output_classes)
             metrics = ["accuracy", mean_iou, dice_coefficient]

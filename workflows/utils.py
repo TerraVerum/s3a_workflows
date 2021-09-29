@@ -190,7 +190,7 @@ class AliasedMaskResolver:
             return
         if num_classes is None:
             num_classes = np.max(label_mask)
-        all_colors = pg.colormap.get(color_map).getLookupTable(nPts=num_classes + 1)
+        all_colors = pg.colormap.get(color_map).getLookupTable(nPts=num_classes)
         item = pg.ImageItem(label_mask, levels=[0, num_classes])
         item.setLookupTable(all_colors, update=True)
         item.save(str(output_file))
