@@ -81,8 +81,9 @@ class RegionPropsWorkflow(WorkflowDir):
         """
         fns.mproc_apply(
             self.text_ann_to_regionprops_csv,
-            comp_imgs_wf.formatted_input_path.glob('*.csv'),
+            fns.naturalSorted(comp_imgs_wf.formatted_input_path.glob('*.csv')),
             return_df=False,
+            descr='Forming Region Properties'
         )
         # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)

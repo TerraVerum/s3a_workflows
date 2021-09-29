@@ -90,16 +90,16 @@ class DataGenerator(Sequence):
         Returns an array of the images and segmentation masks for a batch of data.
         :param image_names: The file ids of the specific batch of data.
         """
-        num_classes_plus_bg = self.num_output_classes + 1
+        num_classes = self.num_output_classes
         images = np.empty((len(image_names), *self.image_shape, 3), dtype=np.uint8)
-        masks = np.empty((len(image_names), *self.image_shape, num_classes_plus_bg), dtype=np.uint8)
+        masks = np.empty((len(image_names), *self.image_shape, num_classes), dtype=np.uint8)
         for index, img_file in enumerate(image_names):
             img = gutils.cvImread_rgb(self.images_dir / img_file, cv.IMREAD_UNCHANGED)
             mask = gutils.cvImread_rgb(self.label_masks_dir / img_file, cv.IMREAD_UNCHANGED)
             # Uncomment below to turn to single class
             # mask[mask > 0] = 1
             images[index, ...] = img
-            mask = to_categorical(mask, num_classes=num_classes_plus_bg, dtype=np.uint8)
+            mask = to_categorical(mask, num_classes=num_classes, dtype=np.uint8)
             masks[index, ...] = mask
         return images, masks
 

@@ -156,7 +156,7 @@ class AliasedMaskResolver:
 
     @property
     def num_classes(self):
-        return np.max(self.class_info['numeric_class'])
+        return len(self.class_info['numeric_class'].unique())
 
     def generate_colored_mask(
         self,

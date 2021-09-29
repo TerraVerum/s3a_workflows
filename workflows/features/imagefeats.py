@@ -195,7 +195,7 @@ class CompImgsWorkflow(WorkflowDir):
             self.create_comp_imgs_df_single,
             self.new_input_files,
             src_dir=full_images_dir,
-            descr='Creating image features',
+            descr='Creating component image pickle files',
             # debug=True
         )
 

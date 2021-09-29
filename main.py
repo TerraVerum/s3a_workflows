@@ -55,7 +55,8 @@ if __name__ == '__main__':
     mwf = MainWorkflow(
         mwf_folder,
         comp_imgs_config=dict(shape=(512, 512)),
-        create_dirs=True
+        create_dirs=True,
+        # reset=True
     )
     mwf.run(
         # annotation_path=mwf.workflow_dir/'subset',
