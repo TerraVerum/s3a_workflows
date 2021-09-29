@@ -354,6 +354,8 @@ class LabelMaskResolverWorkflow(WorkflowDir):
 
 
 class TrainValTestWorkflow(WorkflowDir):
+    _name = 'Train-Val-Test Split'
+
     resolver = AliasedMaskResolver()
 
     TRAIN_NAME = 'train'

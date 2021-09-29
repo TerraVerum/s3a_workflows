@@ -62,11 +62,18 @@ class RegisteredPath:
     def __fspath__(self):
         return self.sub_path
 
+# Simple descriptor since @property doesn't work for classes
+class classproperty:
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, owner):
+        return self.f(owner)
+
 
 class WorkflowDir:
     output_paths: t.Set[str] = set()
-
-    name: str = None
+    _name: str = None
     default_config: dict[str, t.Any] = {}
 
     def __init__(
@@ -83,15 +90,18 @@ class WorkflowDir:
         if config:
             fns.hierarchicalUpdate(self.config, config, replaceLists=True)
 
-        if self.name is None:
-            self.name = type(self).__name__.replace('Workflow', '').lower()
-
         if reset:
             self.reset()
         if create_dirs:
             self.create_dirs()
         if self.config != self.default_config:
             fns.saveToFile(config, self.workflow_dir/(self.name + '_config.yml'))
+
+    # It's a class-level property, that's why this is false positive
+    # noinspection PyMethodParameters
+    @classproperty
+    def name(cls: t.Type[WorkflowDir]):
+        return cls._name or fns.pascalCaseToTitle(cls.__name__.replace('Workflow', ''))
 
     def reset(self):
         # Sort so parent paths are deleted first during rmtree

@@ -1,42 +1,60 @@
 import typing as t
 from pathlib import Path
+import datetime
 
 import pandas as pd
 # Some systems need qt initialized before cv gets imported
 import pyqtgraph as pg
+
 pg.mkQApp()
 
 from workflows.constants import FPIC_IMAGES, FPIC_SMDS, SMD_INIT_OPTS
 from workflows.features import RegionPropsWorkflow, CompImgsWorkflow
 from workflows.features.imagefeats import PngExportWorkflow, TrainValTestWorkflow
-from workflows.models.linknet import LinkNetWorkflow
 from workflows.utils import WorkflowDir
 
 T = t.TypeVar('T')
 
 class MainWorkflow(WorkflowDir):
-    def __init__(self, folder, comp_imgs_config=None, **kwargs):
+    def __init__(
+        self,
+        folder,
+        comp_imgs_config=None,
+        train_linknet=True,
+        **kwargs
+    ):
         folder = Path(folder)
+        # Init attribute so add_workflow can function
+        self.workflow_dir = folder
         self.all_workflows = []
         # Just to make the function name shorter
         _ = self.add_workflow
+        self.stage_counter = 1
 
-        self.img_wf = _(CompImgsWorkflow(
-            folder/'1. Component Image Extraction',
-            comp_imgs_config,
-            **SMD_INIT_OPTS,
-            **kwargs
-        ))
-        self.regionprop_wf = _(RegionPropsWorkflow(folder/'2. Region Props Extraction', **kwargs))
-        self.img_export_wf = _(PngExportWorkflow(folder / '3. Raw Png Exports', **kwargs))
-        self.tvt_wf = _(TrainValTestWorkflow(folder / '4. Label Antialias + Train-Val-Test Split', **kwargs))
-        self.link_wf = _(LinkNetWorkflow( folder / '5. LinkNet Model Outputs',  **kwargs))
+        self.img_wf        = _(CompImgsWorkflow, config=comp_imgs_config, **SMD_INIT_OPTS, **kwargs)
+        self.regionprop_wf = _(RegionPropsWorkflow, **kwargs)
+        self.img_export_wf = _(PngExportWorkflow, **kwargs)
+        self.tvt_wf        = _(TrainValTestWorkflow, **kwargs)
+        if train_linknet:
+            self.link_wf   = self.create_add_linknet(**kwargs)
+        else:
+            self.link_wf   = None
 
         super().__init__(folder, **kwargs)
 
-    def add_workflow(self, wf: T) -> T:
-      self.all_workflows.append(wf)
-      return wf
+    def create_add_linknet(self, **kwargs):
+        # Defer to avoid tensorflow gpu initialization where possible
+        from workflows.models.linknet import LinkNetWorkflow
+        date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        return self.add_workflow(LinkNetWorkflow, f' ({date_time})', **kwargs)
+
+    def add_workflow(self, wf_class: t.Type[T], folder_suffix='', **wf_kwargs) -> T:
+        base_path = self.workflow_dir
+        folder = base_path/(f'{self.stage_counter}. {wf_class.name}' + folder_suffix)
+        wf = wf_class(folder, **wf_kwargs)
+        self.all_workflows.append(wf)
+        self.stage_counter += 1
+        return wf
 
     def update_sub_workflows(self):
         for wf in self.all_workflows:
@@ -56,13 +74,16 @@ class MainWorkflow(WorkflowDir):
         self.regionprop_wf.run(self.img_wf)
         self.img_export_wf.run(self.img_wf)
         self.tvt_wf.run(self.img_export_wf, label_map)
-        self.link_wf.run(self.tvt_wf)
+
+        if self.link_wf:
+            self.link_wf.run(self.tvt_wf)
 
 if __name__ == '__main__':
     mwf_folder = Path.home()/'Desktop/rgb_features_512'
     mwf = MainWorkflow(
         mwf_folder,
         create_dirs=True,
+        # train_linknet=False,
         # reset=True
     )
     mwf.run(
