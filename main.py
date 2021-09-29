@@ -2,6 +2,9 @@ import typing as t
 from pathlib import Path
 
 import pandas as pd
+# Some systems need qt initialized before cv gets imported
+import pyqtgraph as pg
+pg.mkQApp()
 
 from workflows.constants import FPIC_IMAGES, FPIC_SMDS
 from workflows.features import RegionPropsWorkflow, CompImgsWorkflow

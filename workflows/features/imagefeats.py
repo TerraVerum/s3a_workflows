@@ -298,7 +298,7 @@ class CompImgsExportWorkflow(WorkflowDir):
         fns.mproc_apply(
             self._export_single_pcb_image,
             new_files,
-            descr="Generating Comp Imgs Dataset",
+            descr="Exporting Png Files",
             showProgress=True,
             applyAsync=True,
             # debug=True,
@@ -402,8 +402,8 @@ class TrainValTestWorkflow(WorkflowDir):
             self._export_datatype_portion,
             (train_set, other_set),
             extraArgs=(export_wf,),
-            descr='Exporting Png Files',
-            debug=True
+            descr='Forming Train/Val/Test Sets',
+            # debug=True
         )
 
     def _export_datatype_portion(self, dir_summary_map: dict, export_wf):
