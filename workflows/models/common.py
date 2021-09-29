@@ -114,17 +114,19 @@ def export_training_data(graph_path, training_name):
     :param training_name: The string of the unique training session name the model is associated with.
     :return values_df: The dataframe of the different metric values for each training epoch.
     """
-    csv_path = graph_path /f"{training_name}.csv"
+    csv_path = f'{graph_path}.csv'
     if os.path.isfile(csv_path):
         values_df = pd.read_csv(csv_path)
     else:
-        ea_train = event_accumulator.EventAccumulator(str(graph_path / training_name / TVTW.test_dir))
-        ea_validation = event_accumulator.EventAccumulator(str(graph_path / training_name / TVTW.val_dir))
+        ea_train = event_accumulator.EventAccumulator(str(graph_path / 'train'))
+        ea_validation = event_accumulator.EventAccumulator(str(graph_path / 'validation'))
         ea_train.Reload()
         ea_validation.Reload()
         train_values = []
         validation_values = []
         scalars = ea_train.Tags()["scalars"]
+        if not scalars:
+            return
         for scalar in scalars:
             train_values.append([scalar_event.value for scalar_event in ea_train.Scalars(scalar)])
             validation_values.append([scalar_event.value for scalar_event in ea_validation.Scalars(scalar)])
