@@ -146,7 +146,7 @@ class AliasedMaskResolver:
         classes, numeric_labels = np.unique(output_classes.to_numpy(str), return_inverse=True)
         output_df = pd.DataFrame()
         output_df['label'] = output_classes
-        output_df['numeric_class'] = numeric_labels
+        output_df['numeric_class'] = numeric_labels + 1
         # Add in background for easy indexing
         output_df.index.name = 'numeric_label'
         output_df.loc[0, ['numeric_class', 'label']] = (0, 'BGND')
