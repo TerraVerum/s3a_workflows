@@ -49,8 +49,8 @@ def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
 class LinkNetTrainingWorkflow(WorkflowDir):
     # Generated during workflow
     graphs_dir = RegisteredPath()
-    saved_training_weights_dir = RegisteredPath()
-    saved_models_dir = RegisteredPath()
+    saved_training_weights_file = RegisteredPath('.npy')
+    saved_model_file = RegisteredPath('.h5')
     checkpoints_dir = RegisteredPath()
     predictions_dir = RegisteredPath()
 
@@ -143,10 +143,10 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         linknet_model.evaluate(test_generator, steps=test_steps)
 
         np.save(
-            self.saved_training_weights_dir / f"{self.name}.npy",
+            self.saved_training_weights_file,
             np.array(linknet_training_path, dtype=object),
             )
-        linknet_model.save(self.saved_models_dir / f"{self.name}.h5")
+        linknet_model.save(self.saved_model_file)
         test_files = fns.naturalSorted((tvt_wf.test_dir/PEW.images_dir).glob('*.png'))
         self.save_predictions(linknet_model, test_files, num_classes=num_output_classes)
         export_training_data(self.graphs_dir, self.name)
@@ -169,8 +169,11 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
             mask_wf.run([prediction], resolver, [file])
 
-    def load_and_test_model(self, model_file: FilePath, test_image_paths: t.Sequence[FilePath], num_classes=None):
-        model_file = self.saved_models_dir/model_file
+    def load_and_test_model(self, test_image_paths: t.Sequence[FilePath]=None, num_classes=None, model_file: FilePath=None):
+        if model_file:
+            model_file = self.workflow_dir/model_file
+        else:
+            model_file = self.saved_model_file
 
         custom_objects = {
             'dice_coefficient': dice_coefficient,
