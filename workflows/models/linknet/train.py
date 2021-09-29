@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime
+import typing as t
 
 import cv2 as cv
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
+from keras.models import load_model
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.metrics import *
 from tensorflow.keras.optimizers import *
@@ -14,8 +16,9 @@ from tqdm import tqdm
 
 from s3a import generalutils as gutils
 from utilitys import fns
+from utilitys.typeoverloads import FilePath
 from .arch import LinkNet
-from ..common import DataGenerator, export_training_data
+from ..common import DataGenerator
 from ...features.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
 from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
 
@@ -83,13 +86,13 @@ class LinkNetWorkflow(WorkflowDir):
         date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         training_name = date_time
 
-        EW = PngExportWorkflow
+        PEW = PngExportWorkflow
         tvt_wf.resolver.set_class_info(class_info)
         generators = [
             DataGenerator(
                 name_list,
-                dir_/EW.images_dir,
-                dir_/EW.label_masks_dir,
+                dir_/PEW.images_dir,
+                dir_/PEW.label_masks_dir,
                 batch_size,
                 (height, width),
                 tvt_wf.resolver.num_classes,
@@ -147,9 +150,9 @@ class LinkNetWorkflow(WorkflowDir):
             np.array(linknet_training_path, dtype=object),
             )
         linknet_model.save(self.saved_models_dir / f"{training_name}.h5")
-
-        self.save_predictions(linknet_model, training_name, fns.naturalSorted(tvt_wf.test_dir.glob('*.png')), num_output_classes)
-        export_training_data(base_path / "Graphs", training_name)
+        test_files = fns.naturalSorted((tvt_wf.test_dir/PEW.images_dir).glob('*.png'))
+        self.save_predictions(linknet_model, training_name, test_files, num_output_classes)
+        # export_training_data(base_path / "Graphs", training_name)
 
     def save_predictions(self, model, training_name, test_image_paths, num_classes=None):
         """
@@ -169,3 +172,17 @@ class LinkNetWorkflow(WorkflowDir):
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
             mask_wf.run([prediction], resolver, [file])
+
+    def load_and_test_model(self, model_file: FilePath, test_image_paths: t.Sequence[FilePath], num_classes=None):
+        model_file = self.saved_models_dir/model_file
+
+        custom_objects = {
+            'dice_coefficient': dice_coefficient,
+            'tversky_index': tversky_index,
+            'focal_tversky_loss': focal_tversky_loss,
+        }
+
+        model = load_model(model_file, compile = True, custom_objects = custom_objects)
+        if test_image_paths:
+            self.save_predictions(model, model_file.name, test_image_paths, num_classes)
+        return model

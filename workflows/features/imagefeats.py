@@ -398,7 +398,7 @@ class TrainValTestWorkflow(WorkflowDir):
         )
 
     def _export_datatype_portion(self, dir_summary_map: dict, export_wf):
-        EW = PngExportWorkflow
+        PEW = PngExportWorkflow
         link_func = self._get_link_func()
         for dest_dir, df in dir_summary_map.items():
             mask_wf = LabelMaskResolverWorkflow(dest_dir, create_dirs=True)
@@ -408,7 +408,7 @@ class TrainValTestWorkflow(WorkflowDir):
                     lambda el: export_wf.label_masks_dir / el),
                 self.resolver
             )
-            image_dir = dest_dir / EW.images_dir
+            image_dir = dest_dir / PEW.images_dir
             image_dir.mkdir(exist_ok=True)
             for row in pd_iterdict(df):
                 comp_file = row['compImageFile']
