@@ -18,7 +18,7 @@ from s3a import generalutils as gutils
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
 from .arch import LinkNet
-from ..common import DataGenerator
+from ..common import DataGenerator, export_training_data
 from ...features.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
 from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
 
@@ -60,7 +60,6 @@ class LinkNetWorkflow(WorkflowDir):
     )
 
     def run(self, tvt_wf: TrainValTestWorkflow):
-        base_path = self.workflow_dir
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
@@ -83,8 +82,6 @@ class LinkNetWorkflow(WorkflowDir):
         image_size = 512
         height = image_size
         width = image_size
-        date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        training_name = date_time
 
         PEW = PngExportWorkflow
         tvt_wf.resolver.set_class_info(class_info)
@@ -146,23 +143,22 @@ class LinkNetWorkflow(WorkflowDir):
         linknet_model.evaluate(test_generator, steps=test_steps)
 
         np.save(
-            self.saved_training_weights_dir / f"{training_name}.npy",
+            self.saved_training_weights_dir / f"{self.name}.npy",
             np.array(linknet_training_path, dtype=object),
             )
-        linknet_model.save(self.saved_models_dir / f"{training_name}.h5")
+        linknet_model.save(self.saved_models_dir / f"{self.name}.h5")
         test_files = fns.naturalSorted((tvt_wf.test_dir/PEW.images_dir).glob('*.png'))
-        self.save_predictions(linknet_model, training_name, test_files, num_output_classes)
-        # export_training_data(base_path / "Graphs", training_name)
+        self.save_predictions(linknet_model, test_files, num_classes=num_output_classes)
+        export_training_data(self.graphs_dir, self.name)
 
-    def save_predictions(self, model, training_name, test_image_paths, num_classes=None):
+    def save_predictions(self, model, test_image_paths, num_classes=None):
         """
         Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
         :param model: The Neural Network model file to generate the predictions of the data.
-        :param training_name: The string of the unique training session name the model is associated with.
         :param test_image_paths: Images to save the predictions of
         :param num_classes: Total number of classes in all train/test/validate data
         """
-        prediction_path = self.predictions_dir/training_name
+        prediction_path = self.predictions_dir
         prediction_path.mkdir(exist_ok=True)
         mask_wf = LabelMaskResolverWorkflow(prediction_path, create_dirs=True)
         resolver = AliasedMaskResolver(np.arange(num_classes) if num_classes else None)
@@ -184,5 +180,5 @@ class LinkNetWorkflow(WorkflowDir):
 
         model = load_model(model_file, compile = True, custom_objects = custom_objects)
         if test_image_paths:
-            self.save_predictions(model, model_file.name, test_image_paths, num_classes)
+            self.save_predictions(model, test_image_paths, num_classes)
         return model
