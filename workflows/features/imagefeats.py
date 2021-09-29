@@ -26,7 +26,7 @@ from utilitys.typeoverloads import FilePath
 from ..constants import FPIC_SMDS, FPIC_IMAGES
 from ..utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
 
-class CompImgsWorkflow(WorkflowDir):
+class ComponentImagesWorkflow(WorkflowDir):
     """
     Prescribes a workflow for generating data sufficient for SMD label-based segmentation unit.
     The final output is a pickled dataframe of component images as well as a populated directory with
@@ -268,7 +268,7 @@ class PngExportWorkflow(WorkflowDir):
     summaries_dir = RegisteredPath()
     summary_file = RegisteredPath('.csv')
 
-    def run(self, comp_imgs_wf: CompImgsWorkflow):
+    def run(self, comp_imgs_wf: ComponentImagesWorkflow):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.

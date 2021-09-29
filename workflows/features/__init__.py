@@ -1,2 +1,2 @@
-from .imagefeats import CompImgsWorkflow
-from .regionpropfeats import RegionPropsWorkflow
+from .imagefeats import ComponentImagesWorkflow
+from .regionpropfeats import RegionPropertiesWorkflow

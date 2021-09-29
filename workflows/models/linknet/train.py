@@ -46,7 +46,7 @@ def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
     dc = (2.0 * intersection + smoothness) / (K.sum(Y_true) + K.sum(Y_predicted) + smoothness)
     return dc
 
-class LinkNetWorkflow(WorkflowDir):
+class LinkNetTrainingWorkflow(WorkflowDir):
     # Generated during workflow
     graphs_dir = RegisteredPath()
     saved_training_weights_dir = RegisteredPath()

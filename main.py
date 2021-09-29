@@ -9,7 +9,7 @@ import pyqtgraph as pg
 pg.mkQApp()
 
 from workflows.constants import FPIC_IMAGES, FPIC_SMDS, SMD_INIT_OPTS
-from workflows.features import RegionPropsWorkflow, CompImgsWorkflow
+from workflows.features import RegionPropertiesWorkflow, ComponentImagesWorkflow
 from workflows.features.imagefeats import PngExportWorkflow, TrainValTestWorkflow
 from workflows.utils import WorkflowDir
 
@@ -31,8 +31,8 @@ class MainWorkflow(WorkflowDir):
         _ = self.add_workflow
         self.stage_counter = 1
 
-        self.img_wf        = _(CompImgsWorkflow, config=comp_imgs_config, **SMD_INIT_OPTS, **kwargs)
-        self.regionprop_wf = _(RegionPropsWorkflow, **kwargs)
+        self.img_wf        = _(ComponentImagesWorkflow, config=comp_imgs_config, **SMD_INIT_OPTS, **kwargs)
+        self.regionprop_wf = _(RegionPropertiesWorkflow, **kwargs)
         self.img_export_wf = _(PngExportWorkflow, **kwargs)
         self.tvt_wf        = _(TrainValTestWorkflow, **kwargs)
         if train_linknet:
@@ -44,9 +44,9 @@ class MainWorkflow(WorkflowDir):
 
     def create_add_linknet(self, **kwargs):
         # Defer to avoid tensorflow gpu initialization where possible
-        from workflows.models.linknet import LinkNetWorkflow
+        from workflows.models.linknet import LinkNetTrainingWorkflow
         date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        return self.add_workflow(LinkNetWorkflow, f' ({date_time})', **kwargs)
+        return self.add_workflow(LinkNetTrainingWorkflow, f' ({date_time})', **kwargs)
 
     def add_workflow(self, wf_class: t.Type[T], folder_suffix='', **wf_kwargs) -> T:
         base_path = self.workflow_dir

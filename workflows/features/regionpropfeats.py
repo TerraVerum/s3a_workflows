@@ -9,7 +9,7 @@ from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.helpers import deserialize
 from s3a.parameditors.table import TableData
 from utilitys import fns
-from .imagefeats import CompImgsWorkflow
+from .imagefeats import ComponentImagesWorkflow
 from ..constants import FPIC_FOLDER
 from ..utils import RegisteredPath
 from ..utils import WorkflowDir
@@ -26,7 +26,7 @@ def max_dim(img):
 def min_dim(img):
     return min(img.shape)
 
-class RegionPropsWorkflow(WorkflowDir):
+class RegionPropertiesWorkflow(WorkflowDir):
     io = ComponentIO(TableData(TEMPLATES_DIR/'proj_smd.s3aprj'))
 
     regionprop_features_file = RegisteredPath('.csv') # Concatenated features
@@ -74,7 +74,7 @@ class RegionPropsWorkflow(WorkflowDir):
         if return_df:
             return props_df
 
-    def run(self, comp_imgs_wf: CompImgsWorkflow):
+    def run(self, comp_imgs_wf: ComponentImagesWorkflow):
         """
         Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
         will show the order in which all processes should be run

@@ -1,2 +1,2 @@
 from .arch import LinkNet
-from .train import LinkNetWorkflow
+from .train import LinkNetTrainingWorkflow
