@@ -338,15 +338,19 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         self,
         label_mask_files: t.List[Path | np.ndarray],
         resolver: AliasedMaskResolver,
+        output_names: t.Sequence[str] = None,
     ):
-        for filename in label_mask_files:
-            mask = resolver.get_maybe_resolve(filename)
+        if output_names is None:
+            output_names = label_mask_files
+        for mask, filename in zip(label_mask_files, output_names):
+            mask = resolver.get_maybe_resolve(mask)
             # Fetch out here to avoid fetching inside loop
             for cmap, dir_ in zip(
                 [None, 'binary', 'viridis'],
                 [self.label_masks_dir, self.binary_masks_dir, self.rgb_masks_dir]
             ):
-                resolver.generate_colored_mask(mask, dir_/filename.name, resolver.num_classes, cmap, resolve=False)
+                filename = os.path.basename(filename)
+                resolver.generate_colored_mask(mask, dir_/filename, resolver.num_classes, cmap, resolve=False)
 
 
 class TrainValTestWorkflow(WorkflowDir):

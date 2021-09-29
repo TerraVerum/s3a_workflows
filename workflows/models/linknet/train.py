@@ -13,6 +13,7 @@ from tensorflow.keras.optimizers import *
 from tqdm import tqdm
 
 from s3a import generalutils as gutils
+from utilitys import fns
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
 from ...features.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
@@ -147,7 +148,7 @@ class LinkNetWorkflow(WorkflowDir):
             )
         linknet_model.save(self.saved_models_dir / f"{training_name}.h5")
 
-        self.save_predictions(linknet_model, training_name, tvt_wf.test_dir, num_output_classes-1)
+        self.save_predictions(linknet_model, training_name, fns.naturalSorted(tvt_wf.test_dir.glob('*.png')), num_output_classes)
         export_training_data(base_path / "Graphs", training_name)
 
     def save_predictions(self, model, training_name, test_image_paths, num_classes=None):
@@ -160,11 +161,11 @@ class LinkNetWorkflow(WorkflowDir):
         """
         prediction_path = self.predictions_dir/training_name
         prediction_path.mkdir(exist_ok=True)
-        mask_wf = LabelMaskResolverWorkflow(self.predictions_dir, create_dirs=True)
+        mask_wf = LabelMaskResolverWorkflow(prediction_path, create_dirs=True)
         resolver = AliasedMaskResolver(np.arange(num_classes) if num_classes else None)
         for file in tqdm(test_image_paths, desc=f"Saving Predictions to {prediction_path}"):
             img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
-            mask_wf.run([prediction], resolver)
+            mask_wf.run([prediction], resolver, [file])
