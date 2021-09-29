@@ -10,10 +10,10 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-
 from s3a import generalutils as gutils
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
+
 
 def default_title(name, trim_exprs, prefix, suffix):
     for suff in trim_exprs:
@@ -109,6 +109,9 @@ class WorkflowDir:
             if any(expr in path for expr in exclude_exprs):
                 continue
             self.workflow_dir.joinpath(path).mkdir(exist_ok=True)
+
+    def run(self, *args, **kwargs):
+        pass
 
 class AliasedMaskResolver:
     class_info: pd.DataFrame

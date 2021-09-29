@@ -8,16 +8,17 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
+from s3a import generalutils as gutils
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.metrics import *
 from tensorflow.keras.optimizers import *
 from tqdm import tqdm
 
-from features.imagefeats import CompImgsExportWorkflow, TrainValTestWorkflow
-from s3a import generalutils as gutils
-from src.utils import WorkflowDir, RegisteredPath
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
+from ...features.imagefeats import CompImgsExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
+from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
+
 
 def tversky_index(Y_true, Y_predicted, alpha = 0.7):
     Y_true = K.cast(Y_true, K.floatx())
@@ -52,7 +53,8 @@ class LinkNetWorkflow(WorkflowDir):
     predictions_dir = RegisteredPath()
 
     default_config = dict(
-        learning_rate=0.0005
+        learning_rate=0.0005,
+        epochs=1000
     )
 
     def run(self, tvt_wf: TrainValTestWorkflow):
@@ -71,11 +73,10 @@ class LinkNetWorkflow(WorkflowDir):
         early_stopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
         loss = focal_tversky_loss
-        optimizer = Adam(learning_rate=0.0005)
+        optimizer = Adam(learning_rate=self.config['learning_rate'])
         batch_size = 1
         # batch_size = 16
         # batch_size = 32
-        epochs = 1
 
         image_size = 512
         height = image_size
@@ -100,7 +101,7 @@ class LinkNetWorkflow(WorkflowDir):
         train_steps, val_steps, test_steps = [len(g) for g in generators]
 
         # Same for all generators
-        num_output_classes = train_generator.num_output_classes
+        num_output_classes = train_generator.num_output_classes + 1
         with (strategy.scope()):
             mean_iou = MeanIoU(num_classes=num_output_classes)
             metrics = ["accuracy", mean_iou, dice_coefficient]
@@ -133,7 +134,7 @@ class LinkNetWorkflow(WorkflowDir):
         linknet_model.fit(
             train_generator,
             steps_per_epoch=train_steps,
-            epochs=epochs,
+            epochs=self.config['epochs'],
             validation_data=val_generator,
             validation_steps=val_steps,
             callbacks=linknet_callbacks,
@@ -147,26 +148,24 @@ class LinkNetWorkflow(WorkflowDir):
             )
         linknet_model.save(self.saved_models_dir / f"{training_name}.h5")
 
-        self.save_predictions(linknet_model, training_name)
+        self.save_predictions(linknet_model, training_name, tvt_wf.test_dir, num_output_classes-1)
         export_training_data(base_path / "Graphs", training_name)
 
-    def save_predictions(self, model, training_name, num_classes=None, ):
+    def save_predictions(self, model, training_name, test_image_paths, num_classes=None):
         """
         Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
         :param model: The Neural Network model file to generate the predictions of the data.
         :param training_name: The string of the unique training session name the model is associated with.
+        :param test_image_paths: Images to save the predictions of
         :param num_classes: Total number of classes in all train/test/validate data
         """
-        wf = CompImgsExportWorkflow(self.workflow_dir)
-        image_path = wf.images_dir / "test"
-        prediction_path = self.predictions_dir/self.name/training_name
-        prediction_wf = CompImgsExportWorkflow(self.predictions_dir)
-        test_images = os.listdir(image_path)
-        for ti in tqdm(test_images, desc=f"Saving Predictions to {prediction_path}"):
-            img = gutils.cvImread_rgb(image_path / ti, cv.IMREAD_UNCHANGED)
+        prediction_path = self.predictions_dir/training_name
+        prediction_path.mkdir(exist_ok=True)
+        mask_wf = LabelMaskResolverWorkflow(self.predictions_dir, create_dirs=True)
+        resolver = AliasedMaskResolver(np.arange(num_classes) if num_classes else None)
+        for file in tqdm(test_image_paths, desc=f"Saving Predictions to {prediction_path}"):
+            img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
-
-            prediction_wf.generate_colored_mask(prediction, prediction_wf.label_masks_dir, num_classes)
-            prediction_wf.generate_colored_mask(prediction, prediction_wf.rgb_masks_dir, num_classes, color_map)
+            mask_wf.run([prediction], resolver)

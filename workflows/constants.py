@@ -1,6 +1,7 @@
-from pathlib import Path
 import os
 import sys
+from pathlib import Path
+
 
 def _init_fpic_folder():
     fpic = os.getenv('FPIC_FOLDER')

@@ -15,19 +15,20 @@ import joblib
 import numpy as np
 import pandas as pd
 from autobom.constants import TEMPLATES_DIR
+from s3a import TableData, ComponentIO, generalutils as gutils, REQD_TBL_FIELDS as RTF, ComplexXYVertices
+from s3a.compio.exporters import SerialExporter
+from s3a.compio.importers import SerialImporter
+from s3a.generalutils import pd_iterdict, resize_pad
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-
-from constants import FPIC_SMDS, FPIC_IMAGES
-from s3a import TableData, ComponentIO, generalutils as gutils, REQD_TBL_FIELDS as RTF, ComplexXYVertices
-from s3a.compio.importers import SerialImporter
-from s3a.compio.exporters import SerialExporter
-from s3a.generalutils import pd_iterdict, resize_pad
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
-from utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
+
+from ..constants import FPIC_SMDS, FPIC_IMAGES
+from ..utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
+
 
 # Override the Parallel class since there's no easy way to provide more informative print messages
 class NamedParallel(joblib.Parallel):
@@ -297,7 +298,7 @@ class CompImgsExportWorkflow(WorkflowDir):
         fns.mproc_apply(
             self._export_single_pcb_image,
             new_files,
-            descr="Generating Dataset",
+            descr="Generating Comp Imgs Dataset",
             showProgress=True,
             applyAsync=True,
             # debug=True,
@@ -346,7 +347,11 @@ class LabelMaskResolverWorkflow(WorkflowDir):
     binary_masks_dir = RegisteredPath()
     label_masks_dir = RegisteredPath()
 
-    def run(self, label_mask_files: t.List[Path], resolver: AliasedMaskResolver):
+    def run(
+        self,
+        label_mask_files: t.List[Path | np.ndarray],
+        resolver: AliasedMaskResolver,
+    ):
         for filename in label_mask_files:
             mask = resolver.get_maybe_resolve(filename)
             # Fetch out here to avoid fetching inside loop
