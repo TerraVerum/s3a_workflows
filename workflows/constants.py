@@ -2,6 +2,7 @@ import os
 import sys
 from pathlib import Path
 
+from autobom.constants import TEMPLATES_DIR
 
 def _init_fpic_folder():
     fpic = os.getenv('FPIC_FOLDER')
@@ -28,3 +29,8 @@ def _init_fpic_folder():
 FPIC_FOLDER = _init_fpic_folder()
 FPIC_SMDS =  FPIC_FOLDER/'smd_annotation'
 FPIC_IMAGES = FPIC_FOLDER/'pcb_image'
+
+SMD_INIT_OPTS = dict(
+    label_field='Designator',
+    s3a_proj=TEMPLATES_DIR/'proj_smd.s3aprj',
+)

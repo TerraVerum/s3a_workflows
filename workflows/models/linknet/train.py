@@ -1,24 +1,22 @@
 from __future__ import annotations
 
 import datetime
-import os
 
 import cv2 as cv
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from s3a import generalutils as gutils
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.metrics import *
 from tensorflow.keras.optimizers import *
 from tqdm import tqdm
 
+from s3a import generalutils as gutils
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
-from ...features.imagefeats import CompImgsExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
+from ...features.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
 from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
-
 
 def tversky_index(Y_true, Y_predicted, alpha = 0.7):
     Y_true = K.cast(Y_true, K.floatx())
@@ -84,7 +82,7 @@ class LinkNetWorkflow(WorkflowDir):
         date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         training_name = date_time
 
-        EW = CompImgsExportWorkflow
+        EW = PngExportWorkflow
         tvt_wf.resolver.set_class_info(class_info)
         generators = [
             DataGenerator(

@@ -3,12 +3,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from autobom.constants import TEMPLATES_DIR
+from skimage.measure import regionprops_table, regionprops
+
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.helpers import deserialize
 from s3a.parameditors.table import TableData
-from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
-
 from .imagefeats import CompImgsWorkflow
 from ..constants import FPIC_FOLDER
 from ..utils import RegisteredPath

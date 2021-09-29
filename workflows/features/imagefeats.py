@@ -5,65 +5,43 @@ import math
 import os
 import pickle
 import shutil
-import sys
 import tempfile
 import typing as t
 from pathlib import Path
 
 import cv2 as cv
-import joblib
 import numpy as np
 import pandas as pd
-from autobom.constants import TEMPLATES_DIR
-from s3a import TableData, ComponentIO, generalutils as gutils, REQD_TBL_FIELDS as RTF, ComplexXYVertices
-from s3a.compio.exporters import SerialExporter
-from s3a.compio.importers import SerialImporter
-from s3a.generalutils import pd_iterdict, resize_pad
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from utilitys import fns
-from utilitys.typeoverloads import FilePath
 
+from s3a import TableData, ComponentIO, generalutils as gutils, REQD_TBL_FIELDS as RTF, ComplexXYVertices
+from s3a.compio.exporters import SerialExporter
+from s3a.compio.importers import SerialImporter
+from s3a.generalutils import pd_iterdict, resize_pad
+from utilitys import fns, PrjParam
+from utilitys.typeoverloads import FilePath
 from ..constants import FPIC_SMDS, FPIC_IMAGES
 from ..utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
 
-
-# Override the Parallel class since there's no easy way to provide more informative print messages
-class NamedParallel(joblib.Parallel):
-    def __init__(self, *args, name=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        if name is None:
-            name = str(self)
-        self.name = name
-
-    def _print(self, msg, msg_args):
-        if not self.verbose:
-            return
-        if self.verbose < 50:
-            writer = sys.stderr.write
-        else:
-            writer = sys.stdout.write
-        msg = msg % msg_args
-        writer('[%s]: %s\n' % (self.name, msg))
-
 class CompImgsWorkflow(WorkflowDir):
     """
-    Prescribes a workflow for generating data sufficient for SMD designator descrimination unit.
+    Prescribes a workflow for generating data sufficient for SMD label-based segmentation unit.
     The final output is a pickled dataframe of component images as well as a populated directory with
     most intermediate steps, and some fitted data transformers. See `run` for more information
     """
     formatted_input_path = RegisteredPath()
 
     comp_imgs_dir = RegisteredPath()
-    designator_labels_file = RegisteredPath('.csv')
+    all_labels_file = RegisteredPath('.csv')
     comp_imgs_file = RegisteredPath('.pkl')
 
     transformers_path = RegisteredPath()
 
     default_config = dict(
-        shape=(50,50),
+        shape=(512,512),
         keepAspectRatio=True,
     )
 
@@ -77,18 +55,30 @@ class CompImgsWorkflow(WorkflowDir):
         generated = {f.stem for f in self.comp_imgs_dir.glob('*.*')}
         return fns.naturalSorted(f for f in files if f.stem not in generated)
 
-    def __init__(self, workflow_folder: Path | str, config: dict=None, **kwargs):
+    def __init__(
+        self,
+        workflow_folder: Path | str,
+        config: dict = None,
+        s3a_proj: FilePath | dict = None,
+        label_field: PrjParam = None,
+        **kwargs
+    ):
         """
         Initializes the workflow with a location and set of data parameters
 
         :param workflow_folder: Where to generate the training outputs. Should either be empty or not exist to avoid accidentally
             overwriting any files
-        :param config: Configuration for generating data. See ``DEFAULT_IMAGE_FEATURE_CONFIG`` for valid options
+        :param config: Configuration for generating data. See ``self.default_config`` for valid options
+        :param prj_spec: S3A project file or dict for interpreting csvs
+        :param label_field: Field to use as label moving forward
         """
         super().__init__(workflow_folder, config=config, **kwargs)
-        td = TableData(cfgDict=fns.attemptFileLoad(TEMPLATES_DIR/'proj_smd.s3aprj'))
+        if isinstance(s3a_proj, FilePath.__args__):
+            s3a_proj = fns.attemptFileLoad(s3a_proj)
+
+        td = TableData(cfgDict=s3a_proj)
         self.io = ComponentIO(td)
-        self.desig_col = td.fieldFromName('Designator')
+        self.label_field = td.fieldFromName(label_field)
 
     def create_formatted_inputs(self, annotation_path: FilePath=None):
         """
@@ -112,25 +102,21 @@ class CompImgsWorkflow(WorkflowDir):
     @functools.lru_cache()
     def create_get_label_mapping(self):
         """
-        Creates a complete list of all designators from the cleaned input
+        Creates a complete list of all labels from the cleaned input
         """
         # Use an lru cache instead of checking for file
-        # if self.designator_labels_file.exists():
-        #     return pd.read_csv(
-        #         self.designator_labels_file,
-        #         dtype=str,
-        #         na_filter=False,
-        #         index_col='Numeric Label')['Designator']
 
         # Passing dataframes over multiprocessing is slower than re-reading a new file's dataframe each iteration.
-        # So, just don't use this dataframe for anything other than getting unique designators
-        designators = pd.concat([pd.read_csv(f, dtype=str, na_filter=False).Designator for f in self.formatted_input_path.glob('*.csv')])
-        limits_counts = designators.value_counts()
+        # So, just don't use this dataframe for anything other than getting unique labels
+        labels_ser = pd.concat([pd.read_csv(f, dtype=str, na_filter=False)[str(self.label_field)]
+                                 for f in self.formatted_input_path.glob('*.csv')]
+                                )
+        limits_counts = labels_ser.value_counts()
 
         info_df = pd.DataFrame(np.c_[limits_counts.index, limits_counts.values], columns=['label', 'count'])
         info_df.index.name = 'numeric_label'
         info_df.index += 1
-        info_df.to_csv(self.designator_labels_file)
+        info_df.to_csv(self.all_labels_file)
         return info_df['label']
 
     def create_comp_imgs_df_single(self, file, src_dir, return_df=False):
@@ -139,12 +125,12 @@ class CompImgsWorkflow(WorkflowDir):
         """
         name = file.name
         df = self.io.importCsv(file)
-        df.columns[df.columns.get_loc(self.desig_col)].opts['limits'] = self.create_get_label_mapping().to_list()
+        df.columns[df.columns.get_loc(self.label_field)].opts['limits'] = self.create_get_label_mapping().to_list()
         exported = self.io.exportCompImgsDf(
             df,
             srcDir=src_dir,
             resizeOpts=self.config,
-            labelField=self.desig_col,
+            labelField=self.label_field,
         )
         self.maybe_reorient_comp_imgs(exported, df[RTF.VERTICES])
         # Unjumble row ordering
@@ -218,8 +204,8 @@ class CompImgsWorkflow(WorkflowDir):
         each pixel is a feature and each row is a new sample
         """
         feats = np.vstack(df['image'].apply(np.ndarray.ravel))
-        desigs = self.create_get_label_mapping()
-        inverse = pd.Series(index=desigs.values, data=desigs.index)
+        labels = self.create_get_label_mapping()
+        inverse = pd.Series(index=labels.values, data=labels.index)
         labels = inverse[df['label'].to_numpy()].values
         if return_df:
             return feats, labels, df
@@ -266,7 +252,8 @@ class CompImgsWorkflow(WorkflowDir):
 
         # self.fit_all_transformers()
 
-class CompImgsExportWorkflow(WorkflowDir):
+
+class PngExportWorkflow(WorkflowDir):
 
     TRAIN_NAME = 'train'
     VALIDATION_NAME = 'validation'
@@ -384,7 +371,7 @@ class TrainValTestWorkflow(WorkflowDir):
         test_pct=0.15,
     )
 
-    def run(self, export_wf: CompImgsExportWorkflow, label_info_df: pd.DataFrame=None):
+    def run(self, export_wf: PngExportWorkflow, label_info_df: pd.DataFrame=None):
 
         summary = self.create_get_filtered_summary_df(
             pd.read_csv(export_wf.summary_file),
@@ -407,7 +394,7 @@ class TrainValTestWorkflow(WorkflowDir):
         )
 
     def _export_datatype_portion(self, dir_summary_map: dict, export_wf):
-        EW = CompImgsExportWorkflow
+        EW = PngExportWorkflow
         link_func = self._get_link_func()
         for dest_dir, df in dir_summary_map.items():
             mask_wf = LabelMaskResolverWorkflow(dest_dir, create_dirs=True)
@@ -481,7 +468,7 @@ class TrainValTestWorkflow(WorkflowDir):
 
     def create_dirs(self,exclude_exprs=('.',)):
         super().create_dirs(exclude_exprs)
-        for sub in CompImgsExportWorkflow.images_dir, CompImgsExportWorkflow.label_masks_dir:
+        for sub in PngExportWorkflow.images_dir, PngExportWorkflow.label_masks_dir:
             for parent in self.train_dir, self.val_dir, self.test_dir:
                 to_create = parent/sub
                 if any(ex in str(to_create) for ex in exclude_exprs):

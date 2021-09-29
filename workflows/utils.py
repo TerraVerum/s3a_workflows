@@ -3,6 +3,7 @@ from __future__ import annotations
 import os.path
 import re
 import shutil
+import sys
 import typing as t
 from pathlib import Path
 
@@ -10,10 +11,10 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
+
 from s3a import generalutils as gutils
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
-
 
 def default_title(name, trim_exprs, prefix, suffix):
     for suff in trim_exprs:
@@ -74,7 +75,8 @@ class WorkflowDir:
         *,
         config: dict=None,
         reset=False,
-        create_dirs=False
+        create_dirs=False,
+        **kwargs
     ):
         self.workflow_dir = Path(folder)
         self.config = self.default_config.copy()
@@ -214,3 +216,26 @@ class AliasedMaskResolver:
         # Ravel since pandas doesn't like 2d indexing to broadcast
         mask[mask > 0] = self.class_info.loc[mask[mask > 0], 'numeric_class'].to_numpy(int)
         return mask
+
+# Override the Parallel class since there's no easy way to provide more informative print messages
+try:
+    import joblib
+    class NamedParallel(joblib.Parallel):
+        def __init__(self, *args, name=None, **kwargs):
+            super().__init__(*args, **kwargs)
+            if name is None:
+                name = str(self)
+            self.name = name
+
+        def _print(self, msg, msg_args):
+            if not self.verbose:
+                return
+            if self.verbose < 50:
+                writer = sys.stderr.write
+            else:
+                writer = sys.stdout.write
+            msg = msg % msg_args
+            writer('[%s]: %s\n' % (self.name, msg))
+except ImportError:
+    # Joblib not available
+    pass
