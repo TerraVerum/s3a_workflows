@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import functools
+import math
 import os
 import pickle
+import shutil
 import sys
+import tempfile
+import typing as t
 from pathlib import Path
 
 import cv2 as cv
 import joblib
 import numpy as np
 import pandas as pd
-import pyqtgraph as pg
 from autobom.constants import TEMPLATES_DIR
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
@@ -18,16 +21,13 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from constants import FPIC_SMDS, FPIC_IMAGES
-from s3a import TableData, ComponentIO, generalutils as gutils
+from s3a import TableData, ComponentIO, generalutils as gutils, REQD_TBL_FIELDS as RTF, ComplexXYVertices
+from s3a.compio.importers import SerialImporter
+from s3a.compio.exporters import SerialExporter
 from s3a.generalutils import pd_iterdict, resize_pad
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
-from utils import S3AFeatureWorkflow, WorkflowDir, RegisteredPath
-
-DEFAULT_IMAGE_FEATURE_CONFIG = dict(
-    shape=(50,50),
-    keepAspectRatio=True,
-)
+from utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
 
 # Override the Parallel class since there's no easy way to provide more informative print messages
 class NamedParallel(joblib.Parallel):
@@ -47,17 +47,34 @@ class NamedParallel(joblib.Parallel):
         msg = msg % msg_args
         writer('[%s]: %s\n' % (self.name, msg))
 
-class CompImgsWorkflow(S3AFeatureWorkflow):
+class CompImgsWorkflow(WorkflowDir):
     """
     Prescribes a workflow for generating data sufficient for SMD designator descrimination unit.
     The final output is a pickled dataframe of component images as well as a populated directory with
     most intermediate steps, and some fitted data transformers. See `run` for more information
     """
+    formatted_input_path = RegisteredPath()
+
     comp_imgs_dir = RegisteredPath()
     designator_labels_file = RegisteredPath('.csv')
     comp_imgs_file = RegisteredPath('.pkl')
 
     transformers_path = RegisteredPath()
+
+    default_config = dict(
+        shape=(50,50),
+        keepAspectRatio=True,
+    )
+
+    @property
+    def new_input_files(self):
+        """
+        Helper property to act like a list of files from the cleansed inputs
+        """
+        files = self.formatted_input_path.glob('*.csv')
+
+        generated = {f.stem for f in self.comp_imgs_dir.glob('*.*')}
+        return fns.naturalSorted(f for f in files if f.stem not in generated)
 
     def __init__(self, workflow_folder: Path | str, config: dict=None, **kwargs):
         """
@@ -67,17 +84,32 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
             overwriting any files
         :param config: Configuration for generating data. See ``DEFAULT_IMAGE_FEATURE_CONFIG`` for valid options
         """
-        if config is None:
-            config = DEFAULT_IMAGE_FEATURE_CONFIG
         super().__init__(workflow_folder, config=config, **kwargs)
         td = TableData(cfgDict=fns.attemptFileLoad(TEMPLATES_DIR/'proj_smd.s3aprj'))
         self.io = ComponentIO(td)
         self.desig_col = td.fieldFromName('Designator')
-        # Can't do at class level since __set_name__ will be called
-        self._converted_inputs_dir = self.comp_imgs_dir
+
+    def create_formatted_inputs(self, annotation_path: FilePath=None):
+        """
+        Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
+        by image to allow multiprocessing on subsections of components
+        """
+        if annotation_path is None:
+            return pd.DataFrame()
+        if annotation_path.is_dir():
+            df = fns.readDataFrameFiles(annotation_path, SerialImporter.readFile)
+        else:
+            df = SerialImporter.readFile(annotation_path)
+        for image, subdf in df.groupby(RTF.IMG_FILE.name):
+            newName = Path(image).with_suffix('.csv').name
+            dest = self.formatted_input_path/newName
+            if not dest.exists():
+                SerialExporter.writeFile(dest, subdf, readonly=False)
+        return df
+
 
     @functools.lru_cache()
-    def create_get_designator_mapping(self):
+    def create_get_label_mapping(self):
         """
         Creates a complete list of all designators from the cleaned input
         """
@@ -94,11 +126,11 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         designators = pd.concat([pd.read_csv(f, dtype=str, na_filter=False).Designator for f in self.formatted_input_path.glob('*.csv')])
         limits_counts = designators.value_counts()
 
-        info_df = pd.DataFrame(np.c_[limits_counts.index, limits_counts.values], columns=['Designator', 'Count'])
-        info_df.index.name = 'Numeric Label'
+        info_df = pd.DataFrame(np.c_[limits_counts.index, limits_counts.values], columns=['label', 'count'])
+        info_df.index.name = 'numeric_label'
         info_df.index += 1
         info_df.to_csv(self.designator_labels_file)
-        return info_df['Designator']
+        return info_df['label']
 
     def create_comp_imgs_df_single(self, file, src_dir, return_df=False):
         """
@@ -106,14 +138,14 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         """
         name = file.name
         df = self.io.importCsv(file)
-        df.columns[df.columns.get_loc(self.desig_col)].opts['limits'] = self.create_get_designator_mapping().to_list()
+        df.columns[df.columns.get_loc(self.desig_col)].opts['limits'] = self.create_get_label_mapping().to_list()
         exported = self.io.exportCompImgsDf(
             df,
             srcDir=src_dir,
             resizeOpts=self.config,
             labelField=self.desig_col,
         )
-        self.maybe_reorient_comp_imgs(exported)
+        self.maybe_reorient_comp_imgs(exported, df[RTF.VERTICES])
         # Unjumble row ordering
         col_order = ['instanceId', 'label', 'numericLabel', 'offset', 'rotated', 'image', 'labelMask' ]
         # Ensure nothing was lost in the reordering
@@ -124,41 +156,46 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         if return_df:
             return exported
 
-    def maybe_reorient_comp_imgs(self, df: pd.DataFrame, add_numeric_label=True):
+    def maybe_reorient_comp_imgs(
+        self,
+        df: pd.DataFrame,
+        vertices: t.Sequence[ComplexXYVertices],
+        add_numeric_label=True
+    ):
         """
         Ensures the width of all SMD components is less than the height (i.e. every component will have a "vertical"
         alignment"
         """
         df['rotated'] = False
-        if add_numeric_label:
-            # Pre-set field to avoid errors setting single values later
-            df['numericLabel'] = -1
-        mapping = self.create_get_designator_mapping()
-        for idx, row in pd_iterdict(df, index=True):
+
+        mapping = self.create_get_label_mapping()
+        numeric_labels = []
+        for (idx, row), verts in zip(pd_iterdict(df, index=True), vertices):
             numeric_lbl = mapping.index[np.argmax(mapping == row['label'])]
-            bool_mask = row['labelMask'] == numeric_lbl
-            on_pixs = np.nonzero(bool_mask)
-            spans = [np.ptp(pixs) for pixs in on_pixs]
+            xy_span = np.ptp(verts.stack(), axis=0)
+            numeric_labels.append(numeric_lbl)
             # If width has a larger span than height, rotate so all components have the same preferred component
             # aspect
-            if spans[1] > spans[0]:
+            if xy_span[0] > xy_span[1]:
                 for kk in 'image', 'labelMask':
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
                 df.at[idx, 'rotated'] = True
-            if add_numeric_label:
-                df.at[idx, 'numericLabel'] = numeric_lbl
+        if add_numeric_label:
+            df['numericLabel'] = numeric_labels
         return df
 
     def create_all_comp_imgs(self, full_images_dir):
         # Save to intermediate directory first to avoid multiprocess comms bandwidth issues
-        # delayed = joblib.delayed(self.create_single_image_features)
-        # NamedParallel(verbose=10, n_jobs=8, name='Image Features')(delayed(file) for file in self.formatted_input_files)
+        # delayed = joblib.delayed(self.create_comp_imgs_df_single)
+        # NamedParallel(verbose=10, n_jobs=8, name='Image Features')(
+        #     delayed(file, src_dir=full_images_dir) for file in self.new_input_files
+        # )
         fns.mproc_apply(
             self.create_comp_imgs_df_single,
             self.new_input_files,
             src_dir=full_images_dir,
             descr='Creating image features',
-            #debug=True
+            # debug=True
         )
 
     def merge_comp_imgs(self):
@@ -169,7 +206,6 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         all_dfs = []
         for file in self.comp_imgs_dir.glob('*.pkl'):
             subdf = pd.read_pickle(file)
-            subdf['imageFile'] = file.stem + '.png'
             all_dfs.append(subdf)
         feats_concat = pd.concat(all_dfs, ignore_index=True)
         feats_concat.to_pickle(self.comp_imgs_file)
@@ -181,13 +217,12 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         each pixel is a feature and each row is a new sample
         """
         feats = np.vstack(df['image'].apply(np.ndarray.ravel))
-        desigs = self.create_get_designator_mapping()
+        desigs = self.create_get_label_mapping()
         inverse = pd.Series(index=desigs.values, data=desigs.index)
         labels = inverse[df['label'].to_numpy()].values
         if return_df:
             return feats, labels, df
         return feats, labels
-
 
     def fit_save_transformer(self, transformer, feats_labels_or_df: pd.DataFrame | tuple):
         if not isinstance(feats_labels_or_df, tuple):
@@ -215,7 +250,6 @@ class CompImgsWorkflow(S3AFeatureWorkflow):
         for xformer in tqdm([PCA(), LDA()], desc='Fitting transformers'):
             self.fit_save_transformer(xformer, feats_labels)
 
-
     def run(self, annotation_path=FPIC_SMDS, full_images_dir=FPIC_IMAGES):
         """
         Entry point for creating image features
@@ -240,130 +274,211 @@ class CompImgsExportWorkflow(WorkflowDir):
     ALL_DATA_TYPE_NAMES = [TRAIN_NAME, VALIDATION_NAME, TEST_NAME]
 
     images_dir = RegisteredPath()
-    masks_dir = RegisteredPath()
 
-    label_masks_dir = RegisteredPath(prefix=masks_dir, trim_exprs=('masks_dir',))
-    rgb_masks_dir = RegisteredPath(prefix=masks_dir, trim_exprs=('masks_dir',))
-    binary_masks_dir = RegisteredPath(prefix=masks_dir, trim_exprs=('masks_dir',))
+    label_masks_dir = RegisteredPath()
 
     summaries_dir = RegisteredPath()
-    summary_file = RegisteredPath('.html')
+    summary_file = RegisteredPath('.csv')
 
     def run(self, comp_imgs_wf: CompImgsWorkflow):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.
         """
-        files = comp_imgs_wf.comp_imgs_dir.glob('*.*')
-        def checkdir(stem):
-            for name in self.ALL_DATA_TYPE_NAMES:
-                yield any((self.images_dir/name).glob(f'{stem}*'))
-        new_files = fns.naturalSorted(f for f in files if not any(checkdir(f.stem)))
+        files = np.array(list(comp_imgs_wf.comp_imgs_dir.glob('*.*')))
+        stems = [f.stem for f in files]
+        if self.summary_file.exists():
+            summary = pd.read_csv(self.summary_file)
+            new_files = fns.naturalSorted(files[np.isin(stems, [Path(f).stem for f in summary['imageFile']], invert=True)])
+        else:
+            new_files = fns.naturalSorted(files)
 
-        mapping = comp_imgs_wf.create_get_designator_mapping()
-        num_classes = len(mapping.index.unique())
 
         fns.mproc_apply(
-            self._train_val_test_single,
+            self._export_single_pcb_image,
             new_files,
             descr="Generating Dataset",
             showProgress=True,
             applyAsync=True,
-            num_classes=num_classes,
-            debug=True,
+            # debug=True,
         )
 
-        self.merge_summaries()
+        self.create_merged_summaries()
 
-    def _train_val_test_single(self, comp_imgs_file, num_classes=None):
+    def _export_single_pcb_image(self, comp_imgs_file):
         out_df = pd.read_pickle(comp_imgs_file)
-        out_df['imageFile'] = comp_imgs_file.stem
-        # Dummy column which will be filled in during export
-        out_df['dataType'] = ''
+        out_df['imageFile'] = comp_imgs_file.with_suffix('.png').name
 
-        datasets = {}
-        test_pct = 0.15
-        train_pct = 1-test_pct*2
-        # Account for times where only 1-2 samples are in the imag annotation
-        if int(train_pct) * len(out_df) < 1:
-            # Randomly assign samples to train, validate, or test
-            dest = np.random.choice(self.ALL_DATA_TYPE_NAMES)
-            datasets[dest] = out_df
-            for other in np.setdiff1d(self.ALL_DATA_TYPE_NAMES, [dest]):
-                datasets[other] = pd.DataFrame()
-        else:
-            train_temp, datasets[self.TEST_NAME] = train_test_split(out_df, test_pct)
-            datasets[self.TRAIN_NAME], datasets[self.VALIDATION_NAME] = train_test_split(train_temp, test_size=test_pct)
-
-        for data_type, df in datasets.items():
-            for dir_ in self.images_dir, self.label_masks_dir, self.rgb_masks_dir, self.binary_masks_dir:
-                os.makedirs(dir_ / data_type, exist_ok=True)
-            for index, row in gutils.pd_iterdict(df, index=True):
-                update_keys = self._export_single_comp(index, row, data_type, num_classes)
-                for kk, vv in update_keys.items():
-                    out_df.at[index, kk] = vv
-
-        out_df.to_csv(
-            self.summaries_dir / comp_imgs_file.with_suffix('.csv').name
+        exported_imgs = []
+        for index, row in gutils.pd_iterdict(out_df, index=True):
+            image_name = self._export_single_comp(index, row)
+            exported_imgs.append(image_name)
+        out_df['compImageFile'] = exported_imgs
+        out_df: pd.DataFrame
+        out_df.drop(columns=['labelMask', 'image']).to_csv(
+            self.summaries_dir / comp_imgs_file.with_suffix('.csv').name,
+            index=False
         )
 
-    def _export_single_comp(self, index, row: dict, data_type: str, num_classes=None):
-        export_name = f'{row["imageFile"]}_id_{index}.png'
-        ret = {}
-        self.generate_colored_mask(row['labelMask'], self.rgb_masks_dir/data_type/export_name, num_classes, 'viridis')
-        self.generate_colored_mask(row['labelMask'], self.binary_masks_dir/data_type/export_name, num_classes, 'binary')
-
+    def _export_single_comp(self, index, row: dict):
+        export_name = f'{os.path.splitext(row["imageFile"])[0]}_id_{index}.png'
 
         for ret_key, dir_ in zip(
             ['image', 'labelMask'],
             [self.images_dir, self.label_masks_dir]
         ):
-            save_name = dir_ / data_type / export_name
+            save_name = dir_/export_name
             gutils.cvImsave_rgb(save_name, row[ret_key])
-            ret[ret_key] = gutils.imgPathtoHtml(save_name)
 
-        ret["dataType"] = data_type
+        return export_name
 
-        return ret
-
-    def merge_summaries(self):
+    def create_merged_summaries(self):
         concat_df = fns.readDataFrameFiles(self.summaries_dir, pd.read_csv)
-        gutils.pd_toHtmlWithStyle(concat_df, self.summary_file, style='img {width: 120px;}', escape=False, index=False)
+        concat_df.to_csv(self.summary_file, index=False)
         return concat_df
 
-    @staticmethod
-    def generate_colored_mask(
-        label_mask: np.ndarray | FilePath,
-        output_file,
-        num_classes: int=None,
-        color_map: str=None
-    ):
-        """
-        A helper function that generates rescaled or RGB versions of label masks
-        :param label_mask: numpy image to transform (or input file containing a mask)
-        :param num_classes: The number of output labels for the Neural Network data. If not provided, defaults
-          to the maximum value in the label mask
-        :param output_file: Location to export the transformed image
-        :param color_map: A string of the Matplotlib color map to use for the generated RGB ground truth segmentation masks.
-            Acceptable color maps are restrained to the following:
-             https://matplotlib.org/stable/tutorials/colors/colormaps.html. If *None*, uses the raw label mask without
-             any changes. If "binary", turns any pixel > 0 to white and any pixel = 0 as black
 
+class LabelMaskResolverWorkflow(WorkflowDir):
+    """
+    Turns masks with potentially many-to-one label mappings to sequentially numbered output values
+    """
+    rgb_masks_dir = RegisteredPath()
+    binary_masks_dir = RegisteredPath()
+    label_masks_dir = RegisteredPath()
+
+    def run(self, label_mask_files: t.List[Path], resolver: AliasedMaskResolver):
+        for filename in label_mask_files:
+            mask = resolver.get_maybe_resolve(filename)
+            # Fetch out here to avoid fetching inside loop
+            for cmap, dir_ in zip(
+                [None, 'binary', 'viridis'],
+                [self.label_masks_dir, self.binary_masks_dir, self.rgb_masks_dir]
+            ):
+                resolver.generate_colored_mask(mask, dir_/filename.name, resolver.num_classes, cmap, resolve=False)
+
+
+class TrainValTestWorkflow(WorkflowDir):
+    resolver: AliasedMaskResolver
+
+    TRAIN_NAME = 'train'
+    VALIDATION_NAME = 'val'
+    TEST_NAME = 'test'
+
+
+    train_dir = RegisteredPath()
+    val_dir = RegisteredPath()
+    test_dir = RegisteredPath()
+
+    filtered_summary_file = RegisteredPath('.csv')
+    class_info_file = RegisteredPath('.csv')
+
+    default_config = dict(
+        balance_classes=True,
+        balance_func='median',
+        replace_samps=False,
+        test_pct=0.15,
+    )
+
+    def run(self, export_wf: CompImgsExportWorkflow, label_info_df: pd.DataFrame=None):
+
+        summary = self.create_get_filtered_summary_df(
+            pd.read_csv(export_wf.summary_file),
+            label_info_df
+        )
+        self.resolver = AliasedMaskResolver(label_info_df['label'])
+        self.resolver.class_info.to_csv(self.class_info_file)
+
+        train_set = {self.train_dir: summary[summary['dataType'] == 'train']}
+        other_set = {}
+        for dir_, typ in zip([self.val_dir, self.test_dir], [self.VALIDATION_NAME, self.TEST_NAME]):
+            other_set[dir_] = summary[summary['dataType'] == typ]
+
+        fns.mproc_apply(
+            self._export_datatype_portion,
+            (train_set, other_set),
+            extraArgs=(export_wf,),
+            descr='Exporting Png Files',
+            debug=True
+        )
+
+    def _export_datatype_portion(self, dir_summary_map: dict, export_wf):
+        EW = CompImgsExportWorkflow
+        link_func = self._get_link_func()
+        for dest_dir, df in dir_summary_map.items():
+            mask_wf = LabelMaskResolverWorkflow(dest_dir, create_dirs=True)
+            # Mask_wf generates colored, normal, and binary scaled masks
+            mask_wf.run(
+                df['compImageFile'].apply(
+                    lambda el: export_wf.label_masks_dir / el),
+                self.resolver
+            )
+            image_dir = dest_dir / EW.images_dir
+            image_dir.mkdir(exist_ok=True)
+            for row in pd_iterdict(df):
+                comp_file = row['compImageFile']
+                link_func(export_wf.images_dir / comp_file, image_dir / comp_file)
+
+    def create_get_filtered_summary_df(self, summary_df, label_info_df):
+        summary_df = self._filter_by_label(summary_df, label_info_df)
+        if self.config.get('balance_classes'):
+            summary_df = self._balance_classes(summary_df)
+        summary_df = self._add_train_val_test_info(summary_df)
+
+        summary_df.to_csv(self.filtered_summary_file, index=False)
+        return summary_df
+
+    @staticmethod
+    def _filter_by_label(summary_df, label_info_df):
+        if label_info_df is None:
+            # Valid if any label is present
+            membership = summary_df['label'].notnull().to_numpy(bool)
+        else:
+            membership = np.isin(summary_df['numericLabel'], label_info_df.index)
+        # Only train on expected labels
+        summary_df = summary_df[membership]
+        return summary_df
+
+    def _balance_classes(self, summary_df):
+        grouped = summary_df.groupby('label')
+        samp_size = math.ceil(grouped.size().apply(self.config['balance_func']))
+        if self.config.get('replace'):
+            sampler = lambda el: el.sample(n=samp_size, replace=True)
+        else:
+            sampler = lambda el: el.sample(n=min(len(el), samp_size))
+        summary_df = grouped.apply(sampler).droplevel('label')
+        return summary_df
+
+    def _add_train_val_test_info(self, summary_df):
+        test_pct = self.config['test_pct']
+        train_temp, test_ids = train_test_split(summary_df.index, test_size=test_pct)
+        _, val_ids = train_test_split(train_temp, test_size=test_pct)
+        summary_df['dataType'] = self.TRAIN_NAME
+        summary_df.loc[test_ids, 'dataType'] = self.TEST_NAME
+        summary_df.loc[val_ids, 'dataType'] = self.VALIDATION_NAME
+        return summary_df
+
+    @staticmethod
+    def _get_link_func():
         """
-        if color_map is None:
-            # Directly save the image
-            gutils.cvImsave_rgb(output_file, label_mask)
-            return
-        if color_map == 'binary':
-            # No need to use colormap -- just force high values on save
-            # Values > 1 should all clip to 255
-            gutils.cvImsave_rgb(output_file, (label_mask > 0).astype('uint8') * 255)
-            return
-        if isinstance(label_mask, FilePath.__args__):
-            label_mask = gutils.cvImread_rgb(label_mask)
-        if num_classes is None:
-            num_classes = np.max(label_mask)
-        all_colors = pg.colormap.get(color_map).getLookupTable(nPts=num_classes + 1)
-        item = pg.ImageItem(label_mask, levels=[0, num_classes])
-        item.setLookupTable(all_colors, update=True)
-        item.save(str(output_file))
+        Symlinks rarely have permission by default on windows so be able to copy if needed
+        """
+        # Use symlinks to avoid lots of file duplication
+        try:
+            link_func = os.symlink
+            with tempfile.TemporaryDirectory() as td:
+                src: Path = Path(td) / 'test'
+                src.touch()
+                link_func(src, src.with_name('testlink'))
+        except (PermissionError, OSError):
+            link_func = shutil.copy
+        return link_func
+
+
+    def create_dirs(self,exclude_exprs=('.',)):
+        super().create_dirs(exclude_exprs)
+        for sub in CompImgsExportWorkflow.images_dir, CompImgsExportWorkflow.label_masks_dir:
+            for parent in self.train_dir, self.val_dir, self.test_dir:
+                to_create = parent/sub
+                if any(ex in str(to_create) for ex in exclude_exprs):
+                    continue
+                to_create.mkdir(exist_ok=True)

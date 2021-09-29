@@ -3,14 +3,16 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from autobom.constants import TEMPLATES_DIR
+from skimage.measure import regionprops_table, regionprops
+
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.helpers import deserialize
 from s3a.parameditors.table import TableData
-from skimage.measure import regionprops_table, regionprops
-from utilitys import fns
-
 from src.constants import FPIC_FOLDER
-from src.utils import RegisteredPath, S3AFeatureWorkflow
+from src.features.imagefeats import CompImgsWorkflow
+from src.utils import RegisteredPath
+from src.utils import WorkflowDir
+from utilitys import fns
 
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
@@ -24,8 +26,7 @@ def max_dim(img):
 def min_dim(img):
     return min(img.shape)
 
-
-class RegionPropsWorkflow(S3AFeatureWorkflow):
+class RegionPropsWorkflow(WorkflowDir):
     io = ComponentIO(TableData(TEMPLATES_DIR/'proj_smd.s3aprj'))
 
     regionprop_features_file = RegisteredPath('.csv') # Concatenated features
@@ -73,17 +74,17 @@ class RegionPropsWorkflow(S3AFeatureWorkflow):
         if return_df:
             return props_df
 
-    def create_all_regionprops(self):
-        fns.mproc_apply(self.text_ann_to_regionprops_csv, self.new_input_files, return_df=False)
-        # Concat after to avoid multiproc bandwidth
-        df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)
-        df.to_csv(self.regionprop_features_file, index=False)
-        return df
-
-    def run(self, annotation_path):
+    def run(self, comp_imgs_wf: CompImgsWorkflow):
         """
         Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
         will show the order in which all processes should be run
         """
-        self.create_formatted_inputs(annotation_path)
-        self.create_all_regionprops()
+        fns.mproc_apply(
+            self.text_ann_to_regionprops_csv,
+            comp_imgs_wf.formatted_input_path.glob('*.csv'),
+            return_df=False,
+        )
+        # Concat after to avoid multiproc bandwidth
+        df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)
+        df.to_csv(self.regionprop_features_file, index=False)
+        return df

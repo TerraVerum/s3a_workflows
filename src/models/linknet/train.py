@@ -13,10 +13,9 @@ from tensorflow.keras.metrics import *
 from tensorflow.keras.optimizers import *
 from tqdm import tqdm
 
-from features.imagefeats import CompImgsExportWorkflow
+from features.imagefeats import CompImgsExportWorkflow, TrainValTestWorkflow
 from s3a import generalutils as gutils
 from src.utils import WorkflowDir, RegisteredPath
-from utilitys import fns
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
 
@@ -52,16 +51,22 @@ class LinkNetWorkflow(WorkflowDir):
     checkpoints_dir = RegisteredPath()
     predictions_dir = RegisteredPath()
 
-    def run(self, img_export_wf: CompImgsExportWorkflow, number_to_label_map: pd.Series=None):
+    default_config = dict(
+        learning_rate=0.0005
+    )
+
+    def run(self, tvt_wf: TrainValTestWorkflow):
         base_path = self.workflow_dir
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
 
-        train_ids, validation_ids, test_ids = [
-            fns.naturalSorted((img_export_wf.label_masks_dir / typ).glob('*.png'))
-            for typ in img_export_wf.ALL_DATA_TYPE_NAMES
-        ]
+        summary_df = pd.read_csv(tvt_wf.filtered_summary_file)
+        tvt_files = []
+        for typ in tvt_wf.TRAIN_NAME, tvt_wf.VALIDATION_NAME, tvt_wf.TEST_NAME:
+            tvt_files.append(summary_df.loc[summary_df['dataType'] == typ, 'compImageFile'])
+
+        class_info = pd.read_csv(tvt_wf.class_info_file)
 
         early_stopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
@@ -75,21 +80,21 @@ class LinkNetWorkflow(WorkflowDir):
         image_size = 512
         height = image_size
         width = image_size
-        color_map = "viridis"
         date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
         training_name = date_time
 
+        EW = CompImgsExportWorkflow
         generators = [
             DataGenerator(
-                id_list,
-                img_export_wf.images_dir,
-                img_export_wf.label_masks_dir,
+                name_list,
+                dir_/EW.images_dir,
+                dir_/EW.label_masks_dir,
                 batch_size,
                 (height, width),
-                number_to_label_map,
+                np.max(class_info['numeric_class']),
                 shuffle=True,
             )
-            for id_list in (train_ids, validation_ids, test_ids)
+            for name_list, dir_ in zip(tvt_files, [tvt_wf.train_dir, tvt_wf.val_dir, tvt_wf.test_dir])
         ]
         train_generator, val_generator, test_generator = generators
         train_steps, val_steps, test_steps = [len(g) for g in generators]
@@ -104,13 +109,13 @@ class LinkNetWorkflow(WorkflowDir):
 
         linknet_training_path = [linknet_model.get_weights()]
         linknet_tensorboard = TensorBoard(
-            log_dir=self.graphs_dir / training_name,
+            log_dir=self.graphs_dir,
             histogram_freq=0,
             write_graph=True,
             write_images=True,
         )
         linknet_modelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpoints_dir / training_name / "{epoch:02d}.h5",
+            filepath=self.checkpoints_dir / "{epoch:02d}.h5",
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
@@ -145,13 +150,12 @@ class LinkNetWorkflow(WorkflowDir):
         self.save_predictions(linknet_model, training_name)
         export_training_data(base_path / "Graphs", training_name)
 
-    def save_predictions(self, model, training_name, num_classes=None, color_map='viridis'):
+    def save_predictions(self, model, training_name, num_classes=None, ):
         """
         Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
         :param model: The Neural Network model file to generate the predictions of the data.
         :param training_name: The string of the unique training session name the model is associated with.
         :param num_classes: Total number of classes in all train/test/validate data
-        :param color_map: A string of the Matplotlib color map to use for the generated RGB ground truth segmentation masks. Acceptable color maps are restrained to the following: https://matplotlib.org/stable/tutorials/colors/colormaps.html.
         """
         wf = CompImgsExportWorkflow(self.workflow_dir)
         image_path = wf.images_dir / "test"
@@ -163,5 +167,6 @@ class LinkNetWorkflow(WorkflowDir):
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
+
             prediction_wf.generate_colored_mask(prediction, prediction_wf.label_masks_dir, num_classes)
             prediction_wf.generate_colored_mask(prediction, prediction_wf.rgb_masks_dir, num_classes, color_map)
