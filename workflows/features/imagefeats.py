@@ -363,7 +363,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
 
 
 class TrainValTestWorkflow(WorkflowDir):
-    resolver: AliasedMaskResolver
+    resolver = AliasedMaskResolver()
 
     TRAIN_NAME = 'train'
     VALIDATION_NAME = 'val'

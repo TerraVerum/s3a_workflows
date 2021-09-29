@@ -128,7 +128,8 @@ class AliasedMaskResolver:
         """
         self.masks_dir = label_masks_dir or Path()
 
-        if number_label_map is None:
+        self.has_class_info = number_label_map is not None
+        if not self.has_class_info:
             # Accept all labels as unique
             number_label_map = np.arange(np.iinfo('uint16').max)
         self.set_number_label_map(number_label_map)
@@ -137,6 +138,13 @@ class AliasedMaskResolver:
         if not isinstance(number_label_map, pd.Series):
             number_label_map = pd.Series(number_label_map, number_label_map)
         self.class_info = self._create_output_class_mapping(number_label_map)
+        self.has_class_info = True
+
+    def set_class_info(self, class_info_df: pd.DataFrame):
+        if 'numeric_label' in class_info_df:
+            class_info_df = class_info_df.set_index('numeric_label')
+        self.class_info = class_info_df
+        self.has_class_info = True
 
     @staticmethod
     def _create_output_class_mapping(output_classes: pd.Series):
@@ -156,7 +164,7 @@ class AliasedMaskResolver:
 
     @property
     def num_classes(self):
-        return len(self.class_info['numeric_class'].unique())
+        return len(self.class_info['numeric_class'].unique()) if self.has_class_info else None
 
     def generate_colored_mask(
         self,

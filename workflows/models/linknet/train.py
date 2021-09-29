@@ -85,6 +85,7 @@ class LinkNetWorkflow(WorkflowDir):
         training_name = date_time
 
         EW = CompImgsExportWorkflow
+        tvt_wf.resolver.set_class_info(class_info)
         generators = [
             DataGenerator(
                 name_list,
@@ -92,7 +93,7 @@ class LinkNetWorkflow(WorkflowDir):
                 dir_/EW.label_masks_dir,
                 batch_size,
                 (height, width),
-                np.max(class_info['numeric_class']),
+                tvt_wf.resolver.num_classes,
                 shuffle=True,
             )
             for name_list, dir_ in zip(tvt_files, [tvt_wf.train_dir, tvt_wf.val_dir, tvt_wf.test_dir])
