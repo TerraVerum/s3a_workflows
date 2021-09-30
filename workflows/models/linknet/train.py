@@ -55,7 +55,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
     predictions_dir = RegisteredPath()
 
     default_config = dict(
-        learning_rate=0.0005,
+        learning_rate=0.001,
+        batch_size=8,
         epochs=1000
     )
 
@@ -75,9 +76,6 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         loss = focal_tversky_loss
         optimizer = Adam(learning_rate=self.config['learning_rate'])
-        batch_size = 1
-        # batch_size = 16
-        # batch_size = 32
 
         image_size = 512
         height = image_size
@@ -90,7 +88,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 name_list,
                 dir_/PEW.images_dir,
                 dir_/PEW.label_masks_dir,
-                batch_size,
+                self.config['batch_size'],
                 (height, width),
                 tvt_wf.resolver.num_classes,
                 shuffle=True,
