@@ -374,13 +374,16 @@ class TrainValTestWorkflow(WorkflowDir):
         balance_classes=True,
         balance_func='median',
         replace_samps=False,
+        val_pct=0.15,
         test_pct=0.15,
+        test_on_unused=False,
+        max_test_samps=None,
     )
 
     def run(self, export_wf: PngExportWorkflow, label_info_df: pd.DataFrame=None):
-
+        full_summary = pd.read_csv(export_wf.summary_file)
         summary = self.create_get_filtered_summary_df(
-            pd.read_csv(export_wf.summary_file),
+            full_summary,
             label_info_df
         )
         if 'numeric_label' in label_info_df.columns:
@@ -420,13 +423,13 @@ class TrainValTestWorkflow(WorkflowDir):
                 link_func(export_wf.images_dir / comp_file, image_dir / comp_file)
 
     def create_get_filtered_summary_df(self, summary_df, label_info_df):
-        summary_df = self._filter_by_label(summary_df, label_info_df)
+        filtered = self._filter_by_label(summary_df, label_info_df)
         if self.config.get('balance_classes'):
-            summary_df = self._balance_classes(summary_df, label_info_df)
-        summary_df = self._add_train_val_test_info(summary_df)
+            filtered = self._balance_classes(filtered, label_info_df)
+        filtered = self._add_train_val_test_info(filtered, summary_df)
 
-        summary_df.to_csv(self.filtered_summary_file, index=False)
-        return summary_df
+        filtered.to_csv(self.filtered_summary_file, index=False)
+        return filtered
 
     @staticmethod
     def _filter_by_label(summary_df, label_info_df):
@@ -455,10 +458,27 @@ class TrainValTestWorkflow(WorkflowDir):
         summary_df = grouped.apply(sampler).droplevel(group_col)
         return summary_df
 
-    def _add_train_val_test_info(self, summary_df):
-        test_pct = self.config['test_pct']
-        train_temp, test_ids = train_test_split(summary_df.index, test_size=test_pct)
-        _, val_ids = train_test_split(train_temp, test_size=test_pct)
+    def _add_train_val_test_info(self, summary_df, full_summary_df):
+        test_on_unused = self.config.get('test_on_unused')
+        if test_on_unused:
+            # Don't dip into training data, instead use unclassified data from the full summary
+            unused = full_summary_df.loc[full_summary_df.index.difference(summary_df.index)]
+            if not len(unused):
+                # There is no unused data, so just use the training data as normal
+                test_on_unused = False
+        # Check once more for training on unused since it may have changed
+        if test_on_unused:
+            test_comps = unused.sample(frac=self.config['test_pct'])
+            max_test = self.config['max_test_samps']
+            if max_test and len(test_comps) > max_test:
+                test_comps = test_comps.sample(n=max_test)
+            train_temp = summary_df.index
+            summary_df = summary_df.append(test_comps)
+            test_ids = test_comps.index
+        else:
+            train_temp, test_ids = train_test_split(summary_df.index.to_numpy(), test_size=self.config['test_pct'])
+        _, val_ids = train_test_split(train_temp, test_size=self.config['val_pct'])
+        # By default, those which aren't test or validate will be training
         summary_df['dataType'] = self.TRAIN_NAME
         summary_df.loc[test_ids, 'dataType'] = self.TEST_NAME
         summary_df.loc[val_ids, 'dataType'] = self.VALIDATION_NAME
