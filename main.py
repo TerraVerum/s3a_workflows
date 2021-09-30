@@ -45,12 +45,13 @@ class MainWorkflow(WorkflowDir):
     def create_add_linknet(self, **kwargs):
         # Defer to avoid tensorflow gpu initialization where possible
         from workflows.models.linknet import LinkNetTrainingWorkflow
-        date_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        return self.add_workflow(LinkNetTrainingWorkflow, f' ({date_time})', **kwargs)
+        return self.add_workflow(LinkNetTrainingWorkflow, **kwargs)
 
-    def add_workflow(self, wf_class: t.Type[T], folder_suffix='', **wf_kwargs) -> T:
+    def add_workflow(self, wf_class: t.Type[T], override_name: str=None, **wf_kwargs) -> T:
         base_path = self.workflow_dir
-        folder = base_path/(f'{self.stage_counter}. {wf_class.name}' + folder_suffix)
+        if override_name is None:
+            override_name = f'{self.stage_counter}. {wf_class.name}'
+        folder = base_path/override_name
         wf = wf_class(folder, **wf_kwargs)
         self.all_workflows.append(wf)
         self.stage_counter += 1
