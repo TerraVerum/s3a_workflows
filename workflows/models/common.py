@@ -28,7 +28,7 @@ class DataGenerator(Sequence):
         labelMasksDir,
         batch_size,
         image_shape,
-        num_output_classes,
+        numOutputClasses,
         shuffle
     ):
         """
@@ -42,7 +42,7 @@ class DataGenerator(Sequence):
             A int of the batch size of the training of the Neural Network.
         :param image_shape: tuple
             A size two tuple of the height and width of the image.
-        :param num_output_classes: Number of total classes present
+        :param numOutputClasses: Number of total classes present
         :param shuffle: bool
             A boolean that indicates whether the data should be shuffled at the end of each epoch.
         """
@@ -58,7 +58,7 @@ class DataGenerator(Sequence):
         self.image_shape = image_shape
         self.shuffle = shuffle
         self.indexes = np.arange(len(self.owned_image_names))
-        self.num_output_classes = num_output_classes
+        self.numOutputClasses = numOutputClasses
         self.labelMasksDir = labelMasksDir
         self.on_epoch_end()
 
@@ -92,7 +92,7 @@ class DataGenerator(Sequence):
         Returns an array of the images and segmentation masks for a batch of data.
         :param image_names: The file ids of the specific batch of data.
         """
-        num_classes = self.num_output_classes
+        num_classes = self.numOutputClasses
         images = np.empty((len(image_names), *self.image_shape, 3), dtype=np.uint8)
         masks = np.empty((len(image_names), *self.image_shape, num_classes), dtype=np.uint8)
         for index, img_file in enumerate(image_names):
