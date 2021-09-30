@@ -10,9 +10,9 @@ from s3a.compio.helpers import deserialize
 from s3a.parameditors.table import TableData
 from utilitys import fns
 from .imagefeats import ComponentImagesWorkflow
-from ..constants import FPIC_FOLDER
-from ..utils import RegisteredPath
-from ..utils import WorkflowDir
+from workflows.constants import FPIC_FOLDER
+from workflows.utils import RegisteredPath, NestedWorkflow
+from workflows.utils import WorkflowDir
 
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
@@ -20,26 +20,26 @@ SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 # Various image features
 # -----
 def aspect(img):
-    return max_dim(img)/min_dim(img)
-def max_dim(img):
+    return maxDim(img)/minDim(img)
+def maxDim(img):
     return max(img.shape)
-def min_dim(img):
+def minDim(img):
     return min(img.shape)
 
 class RegionPropertiesWorkflow(WorkflowDir):
     io = ComponentIO(TableData(TEMPLATES_DIR/'proj_smd.s3aprj'))
 
-    regionprop_features_file = RegisteredPath('.csv') # Concatenated features
-    regionprop_features_dir = RegisteredPath() # Per-image features
+    regionpropFeaturesFile = RegisteredPath('.csv') # Concatenated features
+    regionpropFeaturesDir = RegisteredPath() # Per-image features
 
-    def text_ann_to_regionprops_csv(self, ann_file: Path, return_df=True):
+    def textAnnToRegionpropsCsv(self, annFile: Path, returnDf=True):
         """
         Creates regionprops features for an S3A annotation file. Must have a "vertices" column
         """
-        df = self.io.importSerialized.readFile(ann_file, usecols=['Vertices', 'Instance ID'])
+        df = self.io.importSerialized.readFile(annFile, usecols=['Vertices', 'Instance ID'])
         vertices, errs = deserialize(RTF.VERTICES, df['Vertices'])
         if len(errs):
-            raise RuntimeError(f'Errors during import for {ann_file.name}:\n'
+            raise RuntimeError(f'Errors during import for {annFile.name}:\n'
                                f'{errs.to_string()}')
         if len(vertices) == 0:
             return
@@ -50,42 +50,44 @@ class RegionPropertiesWorkflow(WorkflowDir):
 
         # Can't easily choose "all properties" in table version, so get a sample of available
         # properties here
-        prop_names = list(regionprops(masks[0])[0])
+        propNames = list(regionprops(masks[0])[0])
         for unused in ['convex_image', 'coords', 'filled_image', 'image', 'centroid', 'label', 'moments', 'slice']:
-            prop_names.remove(unused)
-        all_props = []
+            propNames.remove(unused)
+        allProps = []
         for mask in masks:
-            out_dict = regionprops_table(
+            outDict = regionprops_table(
                 mask,
-                properties=prop_names,
-                extra_properties=(aspect, max_dim, min_dim)
+                properties=propNames,
+                extra_properties=(aspect, maxDim, minDim)
             )
-            subdf = pd.DataFrame(out_dict)
-            all_props.append(subdf)
+            subdf = pd.DataFrame(outDict)
+            allProps.append(subdf)
 
-        props_df = pd.concat(all_props)
+        propsDf = pd.concat(allProps)
         # monkey patch bbox since every coordinate is local
-        props_df[['bbox-0', 'bbox-1']] = offsets
-        props_df = props_df.rename(columns={'bbox-0': 'x', 'bbox-1': 'y', 'bbox-2': 'height', 'bbox-3': 'width'})
-        index = pd.MultiIndex.from_product([[ann_file.name], df['Instance ID'].to_numpy(object)],
+        propsDf[['bbox-0', 'bbox-1']] = offsets
+        propsDf = propsDf.rename(columns={'bbox-0': 'x', 'bbox-1': 'y', 'bbox-2': 'height', 'bbox-3': 'width'})
+        index = pd.MultiIndex.from_product([[annFile.name], df['Instance ID'].to_numpy(object)],
                                            names=['Image File', 'Instance ID'])
-        props_df.index = index
-        props_df.to_csv(self.regionprop_features_dir / ann_file.name)
-        if return_df:
-            return props_df
+        propsDf.index = index
+        propsDf.to_csv(self.regionpropFeaturesDir / annFile.name)
+        if returnDf:
+            return propsDf
 
-    def run(self, comp_imgs_wf: ComponentImagesWorkflow):
+    def runWorkflow(self, parent: NestedWorkflow):
         """
         Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
         will show the order in which all processes should be run
         """
+        compImgsWf = parent.get(ComponentImagesWorkflow)
         fns.mproc_apply(
-            self.text_ann_to_regionprops_csv,
-            fns.naturalSorted(comp_imgs_wf.formatted_input_path.glob('*.csv')),
-            return_df=False,
-            descr='Forming Region Properties'
+            self.textAnnToRegionpropsCsv,
+            fns.naturalSorted(compImgsWf.formattedInputPath.glob('*.csv')),
+            returnDf=False,
+            descr='Forming Region Properties',
+            # debug=True
         )
         # Concat after to avoid multiproc bandwidth
-        df = fns.readDataFrameFiles(self.regionprop_features_dir, pd.read_csv)
-        df.to_csv(self.regionprop_features_file, index=False)
+        df = fns.readDataFrameFiles(self.regionpropFeaturesDir, pd.read_csv)
+        df.to_csv(self.regionpropFeaturesFile, index=False)
         return df

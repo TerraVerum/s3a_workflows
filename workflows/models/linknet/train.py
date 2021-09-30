@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import datetime
 import typing as t
 
 import cv2 as cv
@@ -9,18 +8,19 @@ import pandas as pd
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from keras.models import load_model
+from s3a import generalutils as gutils
 from tensorflow.keras.callbacks import *
 from tensorflow.keras.metrics import *
 from tensorflow.keras.optimizers import *
 from tqdm import tqdm
-
-from s3a import generalutils as gutils
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
+
+from workflows.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
-from ...features.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
-from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver
+from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
+
 
 def tversky_index(Y_true, Y_predicted, alpha = 0.7):
     Y_true = K.cast(Y_true, K.floatx())
@@ -48,138 +48,138 @@ def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
 
 class LinkNetTrainingWorkflow(WorkflowDir):
     # Generated during workflow
-    graphs_dir = RegisteredPath()
-    saved_training_weights_file = RegisteredPath('.npy')
-    saved_model_file = RegisteredPath('.h5')
-    checkpoints_dir = RegisteredPath()
-    predictions_dir = RegisteredPath()
+    graphsDir = RegisteredPath()
+    savedTrainingWeightsFile = RegisteredPath('.npy')
+    savedModelFile = RegisteredPath('.h5')
+    checkpointsDir = RegisteredPath()
+    predictionsDir = RegisteredPath()
 
-    default_config = dict(
-        learning_rate=0.001,
-        batch_size=8,
+    def runWorkflow(
+        self,
+        parent: NestedWorkflow,
+        learningRate=0.001,
+        batchSize=8,
         epochs=1000
-    )
-
-    def run(self, tvt_wf: TrainValTestWorkflow):
+    ):
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
+        tvtWf = parent.get(TrainValTestWorkflow)
+        summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
+        tvtFiles = []
+        for typ in tvtWf.TRAIN_NAME, tvtWf.VALIDATION_NAME, tvtWf.TEST_NAME:
+            tvtFiles.append(summaryDf.loc[summaryDf['dataType'] == typ, 'compImageFile'])
 
-        summary_df = pd.read_csv(tvt_wf.filtered_summary_file)
-        tvt_files = []
-        for typ in tvt_wf.TRAIN_NAME, tvt_wf.VALIDATION_NAME, tvt_wf.TEST_NAME:
-            tvt_files.append(summary_df.loc[summary_df['dataType'] == typ, 'compImageFile'])
+        classInfo = pd.read_csv(tvtWf.classInfoFile)
 
-        class_info = pd.read_csv(tvt_wf.class_info_file)
-
-        early_stopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
+        earlyStopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
         loss = focal_tversky_loss
-        optimizer = Adam(learning_rate=self.config['learning_rate'])
+        optimizer = Adam(learning_rate=learningRate)
 
-        image_size = 512
-        height = image_size
-        width = image_size
+        imageSize = 512
+        height = imageSize
+        width = imageSize
 
         PEW = PngExportWorkflow
-        tvt_wf.resolver.set_class_info(class_info)
+        tvtWf.resolver.setClassInfo(classInfo)
         generators = [
             DataGenerator(
-                name_list,
-                dir_/PEW.images_dir,
-                dir_/PEW.label_masks_dir,
-                self.config['batch_size'],
+                nameList,
+                dir_/PEW.imagesDir,
+                dir_/PEW.labelMasksDir,
+                batchSize,
                 (height, width),
-                tvt_wf.resolver.num_classes,
+                tvtWf.resolver.numClasses,
                 shuffle=True,
             )
-            for name_list, dir_ in zip(tvt_files, [tvt_wf.train_dir, tvt_wf.val_dir, tvt_wf.test_dir])
+            for nameList, dir_ in zip(tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir])
         ]
-        train_generator, val_generator, test_generator = generators
-        train_steps, val_steps, test_steps = [len(g) for g in generators]
+        trainGenerator, valGenerator, testGenerator = generators
+        trainSteps, valSteps, testSteps = [len(g) for g in generators]
 
         # Same for all generators
-        num_output_classes = train_generator.num_output_classes
+        numOutputClasses = trainGenerator.numOutputClasses
         with (strategy.scope()):
-            mean_iou = MeanIoU(num_classes=num_output_classes)
-            metrics = ["accuracy", mean_iou, dice_coefficient]
-            linknet_model = LinkNet(height, width, num_output_classes).get_model()
-            linknet_model.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+            meanIou = MeanIoU(num_classes=numOutputClasses)
+            metrics = ["accuracy", meanIou, dice_coefficient]
+            linknetModel = LinkNet(height, width, numOutputClasses).get_model()
+            linknetModel.compile(optimizer=optimizer, loss=loss, metrics=metrics)
 
-        linknet_training_path = [linknet_model.get_weights()]
-        linknet_tensorboard = TensorBoard(
-            log_dir=self.graphs_dir,
+        linknetTrainingPath = [linknetModel.get_weights()]
+        linknetTensorboard = TensorBoard(
+            log_dir=self.graphsDir,
             histogram_freq=0,
             write_graph=True,
             write_images=True,
         )
-        linknet_modelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpoints_dir / "{epoch:02d}.h5",
+        linknetModelcheckpoint = ModelCheckpoint(
+            filepath=self.checkpointsDir / "{epoch:02d}.h5",
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
         )
-        linknet_weight_saving = LambdaCallback(
-            on_epoch_end=(lambda epoch, logs: linknet_training_path.append(linknet_model.get_weights()))
+        linknetWeightSaving = LambdaCallback(
+            on_epoch_end=(lambda epoch, logs: linknetTrainingPath.append(linknetModel.get_weights()))
         )
-        linknet_callbacks = [
-            linknet_tensorboard,
-            linknet_modelcheckpoint,
-            linknet_weight_saving,
-            early_stopping,
+        linknetCallbacks = [
+            linknetTensorboard,
+            linknetModelcheckpoint,
+            linknetWeightSaving,
+            earlyStopping,
         ]
 
-        linknet_model.fit(
-            train_generator,
-            steps_per_epoch=train_steps,
-            epochs=self.config['epochs'],
-            validation_data=val_generator,
-            validation_steps=val_steps,
-            callbacks=linknet_callbacks,
+        linknetModel.fit(
+            trainGenerator,
+            steps_per_epoch=trainSteps,
+            epochs=epochs,
+            validation_data=valGenerator,
+            validation_steps=valSteps,
+            callbacks=linknetCallbacks,
         )
 
-        linknet_model.evaluate(test_generator, steps=test_steps)
+        linknetModel.evaluate(testGenerator, steps=testSteps)
 
         np.save(
-            self.saved_training_weights_file,
-            np.array(linknet_training_path, dtype=object),
+            self.savedTrainingWeightsFile,
+            np.array(linknetTrainingPath, dtype=object),
             )
-        linknet_model.save(self.saved_model_file)
-        test_files = fns.naturalSorted((tvt_wf.test_dir/PEW.images_dir).glob('*.png'))
-        self.save_predictions(linknet_model, test_files, num_classes=num_output_classes)
-        export_training_data(self.graphs_dir, self.name)
+        linknetModel.save(self.savedModelFile)
+        testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
+        self.savePredictions(linknetModel, testFiles, numClasses=numOutputClasses)
+        export_training_data(self.graphsDir, self.name)
 
-    def save_predictions(self, model, test_image_paths, num_classes=None):
+    def savePredictions(self, model, testImagePaths, numClasses=None):
         """
         Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
         :param model: The Neural Network model file to generate the predictions of the data.
-        :param test_image_paths: Images to save the predictions of
-        :param num_classes: Total number of classes in all train/test/validate data
+        :param testImagePaths: Images to save the predictions of
+        :param numClasses: Total number of classes in all train/test/validate data
         """
-        prediction_path = self.predictions_dir
-        prediction_path.mkdir(exist_ok=True)
-        mask_wf = LabelMaskResolverWorkflow(prediction_path, create_dirs=True)
-        resolver = AliasedMaskResolver(np.arange(num_classes) if num_classes else None)
-        for file in tqdm(test_image_paths, desc=f"Saving Predictions to {prediction_path}"):
+        predictionPath = self.predictionsDir
+        predictionPath.mkdir(existOk=True)
+        maskWf = LabelMaskResolverWorkflow(predictionPath, createDirs=True)
+        resolver = AliasedMaskResolver(np.arange(numClasses) if numClasses else None)
+        for file in tqdm(testImagePaths, desc=f"Saving Predictions to {predictionPath}"):
             img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
-            mask_wf.run([prediction], resolver, [file])
+            maskWf.runWorkflow([prediction], resolver, [file])
 
-    def load_and_test_model(self, test_image_paths: t.Sequence[FilePath]=None, num_classes=None, model_file: FilePath=None):
-        if model_file:
-            model_file = self.workflow_dir/model_file
+    def loadAndTestModel(self, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, modelFile: FilePath=None):
+        if modelFile:
+            modelFile = self.workflowDir / modelFile
         else:
-            model_file = self.saved_model_file
+            modelFile = self.savedModelFile
 
-        custom_objects = {
+        customObjects = {
             'dice_coefficient': dice_coefficient,
             'tversky_index': tversky_index,
             'focal_tversky_loss': focal_tversky_loss,
         }
 
-        model = load_model(model_file, compile = True, custom_objects = custom_objects)
-        if test_image_paths:
-            self.save_predictions(model, test_image_paths, num_classes)
+        model = load_model(modelFile, compile = True, custom_objects = customObjects)
+        if testImagePaths:
+            self.savePredictions(model, testImagePaths, numClasses)
         return model

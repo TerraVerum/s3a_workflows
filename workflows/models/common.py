@@ -12,7 +12,7 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 
 from s3a import generalutils as gutils
 
-from ..features.imagefeats import TrainValTestWorkflow as TVTW
+from workflows.imagefeats import TrainValTestWorkflow as TVTW
 
 class DataGenerator(Sequence):
     """
@@ -25,7 +25,7 @@ class DataGenerator(Sequence):
         self,
         owned_image_names: list[Path | str],
         images_dir: Path,
-        label_masks_dir,
+        labelMasksDir,
         batch_size,
         image_shape,
         num_output_classes,
@@ -36,7 +36,7 @@ class DataGenerator(Sequence):
             A list of Path object file directories for the specific data type.
         :param images_dir: Path
             Images to use as inputs data
-        :param label_masks_dir: Path
+        :param labelMasksDir: Path
             Masks to use as ground truth outputs
         :param batch_size: int
             A int of the batch size of the training of the Neural Network.
@@ -59,7 +59,7 @@ class DataGenerator(Sequence):
         self.shuffle = shuffle
         self.indexes = np.arange(len(self.owned_image_names))
         self.num_output_classes = num_output_classes
-        self.label_masks_dir = label_masks_dir
+        self.labelMasksDir = labelMasksDir
         self.on_epoch_end()
 
     def __len__(self):
@@ -97,7 +97,7 @@ class DataGenerator(Sequence):
         masks = np.empty((len(image_names), *self.image_shape, num_classes), dtype=np.uint8)
         for index, img_file in enumerate(image_names):
             img = gutils.cvImread_rgb(self.images_dir / img_file, cv.IMREAD_UNCHANGED)
-            mask = gutils.cvImread_rgb(self.label_masks_dir / img_file, cv.IMREAD_UNCHANGED)
+            mask = gutils.cvImread_rgb(self.labelMasksDir / img_file, cv.IMREAD_UNCHANGED)
             # Uncomment below to turn to single class
             # mask[mask > 0] = 1
             images[index, ...] = img

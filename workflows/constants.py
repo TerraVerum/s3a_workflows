@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from autobom.constants import TEMPLATES_DIR
+os.environ['FPIC_FOLDER'] = str(Path().home()/'Desktop/fpic_mockup/FPIC')
 
 def _init_fpic_folder():
     fpic = os.getenv('FPIC_FOLDER')
@@ -31,6 +32,11 @@ FPIC_SMDS =  FPIC_FOLDER/'smd_annotation'
 FPIC_IMAGES = FPIC_FOLDER/'pcb_image'
 
 SMD_INIT_OPTS = dict(
-    label_field='Designator',
-    s3a_proj=TEMPLATES_DIR/'proj_smd.s3aprj',
+    labelField='Designator',
+    s3aProj=TEMPLATES_DIR/'proj_smd.s3aprj',
+)
+
+DEFAULT_RESIZE_OPTS = dict(
+    shape=(512, 512),
+    keepAspectRatio=True
 )

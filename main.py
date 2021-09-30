@@ -8,86 +8,53 @@ import pyqtgraph as pg
 
 pg.mkQApp()
 
-from workflows.constants import FPIC_IMAGES, FPIC_SMDS, SMD_INIT_OPTS
-from workflows.features import RegionPropertiesWorkflow, ComponentImagesWorkflow
-from workflows.features.imagefeats import PngExportWorkflow, TrainValTestWorkflow
-from workflows.utils import WorkflowDir
+from workflows.constants import FPIC_IMAGES, FPIC_SMDS, SMD_INIT_OPTS, DEFAULT_RESIZE_OPTS
+from workflows.imagefeats import ComponentImagesWorkflow, PngExportWorkflow, TrainValTestWorkflow
+from workflows.regionpropfeats import RegionPropertiesWorkflow
+from workflows.utils import WorkflowDir, NestedWorkflow
 
-T = t.TypeVar('T')
 
-class MainWorkflow(WorkflowDir):
+class MainWorkflow(NestedWorkflow):
     def __init__(
         self,
         folder,
-        comp_imgs_config=None,
-        train_linknet=True,
+        trainLinknet=True,
         **kwargs
     ):
-        folder = Path(folder)
-        # Init attribute so add_workflow can function
-        self.workflow_dir = folder
-        self.all_workflows = []
-        # Just to make the function name shorter
-        _ = self.add_workflow
-        self.stage_counter = 1
-
-        self.img_wf        = _(ComponentImagesWorkflow, config=comp_imgs_config, **SMD_INIT_OPTS, **kwargs)
-        self.regionprop_wf = _(RegionPropertiesWorkflow, **kwargs)
-        self.img_export_wf = _(PngExportWorkflow, **kwargs)
-        self.tvt_wf        = _(TrainValTestWorkflow, **kwargs)
-        if train_linknet:
-            self.link_wf   = self.create_add_linknet(**kwargs)
-        else:
-            self.link_wf   = None
-
         super().__init__(folder, **kwargs)
+        # Just to make the function name shorter
+        _ = self.addWorkflow
 
-    def create_add_linknet(self, **kwargs):
+        self.imgWf        = _(ComponentImagesWorkflow, **kwargs)
+        self.regionpropWf = _(RegionPropertiesWorkflow, **kwargs)
+        self.imgExportWf = _(PngExportWorkflow, **kwargs)
+        self.tvtWf        = _(TrainValTestWorkflow, **kwargs)
+        if trainLinknet:
+            self.linkWf   = self.createAddLinknet(**kwargs)
+        else:
+            self.linkWf   = None
+
+
+    def createAddLinknet(self, **kwargs):
         # Defer to avoid tensorflow gpu initialization where possible
         from workflows.models.linknet import LinkNetTrainingWorkflow
-        return self.add_workflow(LinkNetTrainingWorkflow, **kwargs)
-
-    def add_workflow(self, wf_class: t.Type[T], override_name: str=None, **wf_kwargs) -> T:
-        base_path = self.workflow_dir
-        if override_name is None:
-            override_name = f'{self.stage_counter}. {wf_class.name}'
-        folder = base_path/override_name
-        wf = wf_class(folder, **wf_kwargs)
-        self.all_workflows.append(wf)
-        self.stage_counter += 1
-        return wf
-
-    def update_sub_workflows(self):
-        for wf in self.all_workflows:
-            wf.workflow_dir = self.workflow_dir/wf.workflow_dir.name
-
-    def reset(self):
-        for wf in self.all_workflows:
-            wf.reset()
-
-    def create_dirs(self, exclude_exprs=('.',)):
-        super().create_dirs(exclude_exprs)
-        for wf in self.all_workflows:
-            wf.create_dirs(exclude_exprs)
-
-    def run(self, annotation_path=FPIC_SMDS, full_images_dir=FPIC_IMAGES, label_map: pd.DataFrame=None):
-        self.img_wf.run(annotation_path, full_images_dir)
-        self.regionprop_wf.run(self.img_wf)
-        self.img_export_wf.run(self.img_wf)
-        self.tvt_wf.run(self.img_export_wf, label_map)
-
-        if self.link_wf:
-            self.link_wf.run(self.tvt_wf)
+        return self.addWorkflow(LinkNetTrainingWorkflow, **kwargs)
 
 if __name__ == '__main__':
-    mwf_folder = Path.home()/'Desktop/rgb_features_512'
+    mwfFolder = Path.home()/'Desktop/rgb_features_512'
     mwf = MainWorkflow(
-        mwf_folder,
-        create_dirs=True,
-        # train_linknet=False,
-        # reset=True
+        mwfFolder,
+        createDirs=True,
+        trainLinknet=False,
+        # resetRegisteredPaths=True
     )
+    for wfClass in ComponentImagesWorkflow, PngExportWorkflow, RegionPropertiesWorkflow:
+        mwf.get(wfClass).disabled = True
     mwf.run(
-        annotation_path=mwf.workflow_dir/'subset',
-        label_map=pd.read_csv(mwf.workflow_dir / 'aliased_labels.csv', index_col=['numeric_label'])
+        # annotationPath=mwf.workflowDir/'subset',
+        labelMap=pd.read_csv(mwf.workflowDir / 'aliased_labels.csv', index_col=['numeric_label']),
+        testOnUnused=True,
+        maxTestSamps=100,
+        **SMD_INIT_OPTS,
+        resizeOpts=DEFAULT_RESIZE_OPTS
     )
