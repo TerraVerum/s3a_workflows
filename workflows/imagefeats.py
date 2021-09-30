@@ -107,7 +107,8 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         name = file.name
         df = self.io.importCsv(file)
-        df.columns[df.columns.get_loc(self.labelField)].opts['limits'] = self.createGetLabelMapping().to_list()
+        mapping = self.createGetLabelMapping()
+        df.columns[df.columns.get_loc(self.labelField)].opts['limits'] = mapping.to_list()
         if resizeOpts is None or 'shape' not in resizeOpts:
             raise ValueError('Must pass at least a dictionary with `shape` info when creating component image exports')
         exported = self.io.exportCompImgsDf(
@@ -116,7 +117,10 @@ class ComponentImagesWorkflow(WorkflowDir):
             resizeOpts=self.input.get('resizeOpts', {}),
             labelField=self.labelField,
         )
-        self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
+        idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported['label']]
+        exported['numericLabel'] = mapping.index[idxs]
+        if self.input['forceVerticalOrientation']:
+            self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
         # Unjumble row ordering
         colOrder = ['instanceId', 'label', 'numericLabel', 'offset', 'rotated', 'image', 'labelMask']
         # Ensure nothing was lost in the reordering
@@ -131,7 +135,6 @@ class ComponentImagesWorkflow(WorkflowDir):
         self,
         df: pd.DataFrame,
         vertices: t.Sequence[ComplexXYVertices],
-        addNumericLabel=True
     ):
         """
         Ensures the width of all SMD components is less than the height (i.e. every component will have a "vertical"
@@ -139,20 +142,14 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         df['rotated'] = False
 
-        mapping = self.createGetLabelMapping()
-        numericLabels = []
         for (idx, row), verts in zip(pd_iterdict(df, index=True), vertices):
-            numericLbl = mapping.index[np.argmax(mapping == row['label'])]
             xySpan = np.ptp(verts.stack(), axis=0)
-            numericLabels.append(numericLbl)
             # If width has a larger span than height, rotate so all components have the same preferred component
             # aspect
             if xySpan[0] > xySpan[1]:
                 for kk in 'image', 'labelMask':
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
                 df.at[idx, 'rotated'] = True
-        if addNumericLabel:
-            df['numericLabel'] = numericLabels
         return df
 
     def createAllCompImgs(self, fullImagesDir):
@@ -163,7 +160,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             srcDir=fullImagesDir,
             resizeOpts=self.input['resizeOpts'],
             descr='Creating component image pickle files',
-            # debug=True,
+            debug=True,
         )
 
     def mergeCompImgs(self):
@@ -187,6 +184,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         labelField: PrjParam | str = None,
         tryMergingComps=False,
         resizeOpts: dict=None,
+        forceVerticalOrientation=True
     ):
         """
         Entry point for creating image features
