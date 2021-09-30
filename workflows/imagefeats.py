@@ -121,11 +121,12 @@ class ComponentImagesWorkflow(WorkflowDir):
         exported['numericLabel'] = mapping.index[idxs]
         if self.input['forceVerticalOrientation']:
             self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
+        else:
+            exported['rotated'] = False
         # Unjumble row ordering
         colOrder = ['instanceId', 'label', 'numericLabel', 'offset', 'rotated', 'image', 'labelMask']
         # Ensure nothing was lost in the reordering
-        assert all(c in exported for c in colOrder)
-        assert all(c in colOrder for c in exported)
+        assert set(exported) == set(colOrder)
         exported = exported[colOrder]
         exported.to_pickle((self.compImgsDir / name).with_suffix('.pkl'))
         if returnDf:
