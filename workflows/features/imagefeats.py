@@ -443,7 +443,7 @@ class TrainValTestWorkflow(WorkflowDir):
         if label_info_df is None:
             group_col = summary_df['label']
         else:
-            group_col = 'grouper'
+            group_col = 'labelGroup'
             summary_df = summary_df.copy()
             summary_df[group_col] = label_info_df.loc[summary_df['numericLabel'], 'label'].to_numpy(str)
         grouped = summary_df.groupby(group_col)
