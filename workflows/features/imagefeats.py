@@ -383,6 +383,9 @@ class TrainValTestWorkflow(WorkflowDir):
             pd.read_csv(export_wf.summary_file),
             label_info_df
         )
+        if 'numeric_label' in label_info_df.columns:
+            label_info_df = label_info_df.set_index('numeric_label')
+
         self.resolver = AliasedMaskResolver(label_info_df['label'])
         self.resolver.class_info.to_csv(self.class_info_file)
 
@@ -419,7 +422,7 @@ class TrainValTestWorkflow(WorkflowDir):
     def create_get_filtered_summary_df(self, summary_df, label_info_df):
         summary_df = self._filter_by_label(summary_df, label_info_df)
         if self.config.get('balance_classes'):
-            summary_df = self._balance_classes(summary_df)
+            summary_df = self._balance_classes(summary_df, label_info_df)
         summary_df = self._add_train_val_test_info(summary_df)
 
         summary_df.to_csv(self.filtered_summary_file, index=False)
@@ -436,14 +439,20 @@ class TrainValTestWorkflow(WorkflowDir):
         summary_df = summary_df[membership]
         return summary_df
 
-    def _balance_classes(self, summary_df):
-        grouped = summary_df.groupby('label')
+    def _balance_classes(self, summary_df, label_info_df=None):
+        if label_info_df is None:
+            group_col = summary_df['label']
+        else:
+            group_col = 'grouper'
+            summary_df = summary_df.copy()
+            summary_df[group_col] = label_info_df.loc[summary_df['numericLabel'], 'label'].to_numpy(str)
+        grouped = summary_df.groupby(group_col)
         samp_size = math.ceil(grouped.size().apply(self.config['balance_func']))
         if self.config.get('replace'):
             sampler = lambda el: el.sample(n=samp_size, replace=True)
         else:
             sampler = lambda el: el.sample(n=min(len(el), samp_size))
-        summary_df = grouped.apply(sampler).droplevel('label')
+        summary_df = grouped.apply(sampler).droplevel(group_col)
         return summary_df
 
     def _add_train_val_test_info(self, summary_df):
