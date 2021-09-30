@@ -48,8 +48,8 @@ if __name__ == '__main__':
         trainLinknet=False,
         # resetRegisteredPaths=True
     )
-    for wfClass in ComponentImagesWorkflow, PngExportWorkflow, RegionPropertiesWorkflow:
-        mwf.get(wfClass).disabled = True
+    # for wfClass in ComponentImagesWorkflow, PngExportWorkflow, RegionPropertiesWorkflow:
+    #     mwf.get(wfClass).disabled = True
     mwf.run(
         # annotationPath=mwf.workflowDir/'subset',
         labelMap=pd.read_csv(mwf.workflowDir / 'aliased_labels.csv', index_col=['numeric_label']),
