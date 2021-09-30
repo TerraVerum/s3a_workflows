@@ -161,7 +161,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             srcDir=fullImagesDir,
             resizeOpts=self.input['resizeOpts'],
             descr='Creating component image pickle files',
-            debug=True,
+            # debug=True,
         )
 
     def mergeCompImgs(self):
@@ -413,7 +413,7 @@ class TrainValTestWorkflow(WorkflowDir):
             (trainSet, otherSet),
             extraArgs=(exportWf,),
             descr='Forming Train/Val/Test Sets',
-            debug=True
+            # debug=True
         )
 
     def _exportDatatypePortion(self, dirSummaryMap: dict, exportWf):

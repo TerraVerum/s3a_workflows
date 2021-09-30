@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 
 from autobom.constants import TEMPLATES_DIR
-os.environ['FPIC_FOLDER'] = str(Path().home()/'Desktop/fpic_mockup/FPIC')
 
 def _init_fpic_folder():
     fpic = os.getenv('FPIC_FOLDER')
