@@ -3,16 +3,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from autobom.constants import TEMPLATES_DIR
-from skimage.measure import regionprops_table, regionprops
-
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.helpers import deserialize
 from s3a.parameditors.table import TableData
+from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
-from .imagefeats import ComponentImagesWorkflow
-from workflows.constants import FPIC_FOLDER
-from workflows.utils import RegisteredPath, NestedWorkflow
-from workflows.utils import WorkflowDir
+
+from .compimgs import ComponentImagesWorkflow
+from .constants import FPIC_FOLDER, DEBUG
+from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
 
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
@@ -85,7 +84,7 @@ class RegionPropertiesWorkflow(WorkflowDir):
             fns.naturalSorted(compImgsWf.formattedInputPath.glob('*.csv')),
             returnDf=False,
             descr='Forming Region Properties',
-            # debug=True
+            debug=DEBUG
         )
         # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionpropFeaturesDir, pd.read_csv)

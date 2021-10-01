@@ -12,7 +12,7 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 
 from s3a import generalutils as gutils
 
-from workflows.imagefeats import TrainValTestWorkflow as TVTW
+from workflows.trainvaltest import TrainValidateTestSplitWorkflow as TVTW
 
 class DataGenerator(Sequence):
     """

@@ -16,7 +16,8 @@ from tqdm import tqdm
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
-from workflows.imagefeats import PngExportWorkflow, TrainValTestWorkflow, LabelMaskResolverWorkflow
+from ...trainvaltest import LabelMaskResolverWorkflow, TrainValidateTestSplitWorkflow
+from ...png import PngExportWorkflow
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
 from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
@@ -64,7 +65,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
-        tvtWf = parent.get(TrainValTestWorkflow)
+        tvtWf = parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
         for typ in tvtWf.TRAIN_NAME, tvtWf.VALIDATION_NAME, tvtWf.TEST_NAME:
@@ -143,7 +144,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         np.save(
             self.savedTrainingWeightsFile,
             np.array(linknetTrainingPath, dtype=object),
-            )
+        )
         linknetModel.save(self.savedModelFile)
         testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
         self.savePredictions(linknetModel, testFiles, numClasses=numOutputClasses)
@@ -157,7 +158,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param numClasses: Total number of classes in all train/test/validate data
         """
         predictionPath = self.predictionsDir
-        predictionPath.mkdir(existOk=True)
+        predictionPath.mkdir(exist_ok=True)
         maskWf = LabelMaskResolverWorkflow(predictionPath, createDirs=True)
         resolver = AliasedMaskResolver(np.arange(numClasses) if numClasses else None)
         for file in tqdm(testImagePaths, desc=f"Saving Predictions to {predictionPath}"):

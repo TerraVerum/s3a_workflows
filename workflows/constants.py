@@ -39,3 +39,6 @@ DEFAULT_RESIZE_OPTS = dict(
     shape=(512, 512),
     keepAspectRatio=True
 )
+
+# Determines whether multiprocessing uses multiple cores or is disabled
+DEBUG = True
