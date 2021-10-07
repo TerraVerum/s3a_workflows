@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from autobom.constants import TEMPLATES_DIR
+from s3a.constants import PRJ_ENUMS
 
 def _init_fpic_folder():
     fpic = os.getenv('FPIC_FOLDER')
@@ -37,7 +38,7 @@ SMD_INIT_OPTS = dict(
 
 DEFAULT_RESIZE_OPTS = dict(
     shape=(512, 512),
-    keepAspectRatio=True
+    rotationDeg=PRJ_ENUMS.ROT_OPTIMAL
 )
 
 # Determines whether multiprocessing uses multiple cores or is disabled
