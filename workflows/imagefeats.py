@@ -3,13 +3,13 @@ from __future__ import annotations
 import pickle
 from pathlib import Path
 
+import cv2 as cv
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from tqdm import tqdm
 
-from s3a.generalutils import resize_pad
 from utilitys import fns
 
 from .compimgs import ComponentImagesWorkflow
@@ -48,7 +48,7 @@ class ImageToFeatureWorkflow(WorkflowDir):
         def readFunc(file: Path):
             df_ = pd.read_pickle(file)
             for idx, img in df_['image'].iteritems():
-                df_.at[idx, 'image'] = resize_pad(img, (50,50))
+                df_.at[idx, 'image'] = cv.resize(img, (50,50))
             return df_
         df = fns.readDataFrameFiles(compImgsWf.compImgsDir, readFunc)
         # Ensure classes aren't overrepresented and blanks aren't an actual class
