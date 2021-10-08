@@ -56,6 +56,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
         by image to allow multiprocessing on subsections of components
         """
+        annotationPath = Path(annotationPath)
         if annotationPath is None:
             return pd.DataFrame()
         if annotationPath.is_dir():

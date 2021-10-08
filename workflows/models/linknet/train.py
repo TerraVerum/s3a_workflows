@@ -16,7 +16,7 @@ from tqdm import tqdm
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
-from ...trainvaltest import LabelMaskResolverWorkflow, TrainValidateTestSplitWorkflow
+from ...tvtsplit import LabelMaskResolverWorkflow, TrainValidateTestSplitWorkflow
 from ...png import PngExportWorkflow
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data

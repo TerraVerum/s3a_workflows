@@ -6,13 +6,10 @@ from pathlib import Path
 import cv2 as cv
 import numpy as np
 import pandas as pd
+from s3a import generalutils as gutils
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
-
-from s3a import generalutils as gutils
-
-from workflows.trainvaltest import TrainValidateTestSplitWorkflow as TVTW
 
 class DataGenerator(Sequence):
     """
