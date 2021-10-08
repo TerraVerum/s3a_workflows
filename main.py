@@ -89,7 +89,7 @@ def main_cli():
     parser = fns.makeCli(main)
     # Prevent failure for rgb512 parsing
 
-    argv = sys.argv.copy()
+    argv = sys.argv[1:].copy()
     for kk in 'outputFolder', 'labelMapFile':
         if f'--{kk}' not in argv:
             argv += [f'--{kk}', None]

@@ -110,7 +110,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported['label']]
         exported['numericLabel'] = mapping.index[idxs]
         if self.input['forceVerticalOrientation']:
-            self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
+            exported = self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
         else:
             exported['rotated'] = False
         # Unjumble row ordering
