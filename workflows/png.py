@@ -1,10 +1,11 @@
 import os
 from pathlib import Path
 
+import cv2 as cv
 import numpy as np
 import pandas as pd
 from s3a import generalutils as gutils
-from utilitys import fns
+from utilitys import fns, widgets
 
 from .compimgs import ComponentImagesWorkflow
 from .constants import DEBUG
@@ -19,13 +20,13 @@ class PngExportWorkflow(WorkflowDir):
     ALL_DATA_TYPE_NAMES = [TRAIN_NAME, VALIDATION_NAME, TEST_NAME]
 
     imagesDir = RegisteredPath()
-
     labelMasksDir = RegisteredPath()
+    overlaysDir = RegisteredPath()
 
     summariesDir = RegisteredPath()
     summaryFile = RegisteredPath('.csv')
 
-    def runWorkflow(self, parent: NestedWorkflow):
+    def runWorkflow(self, parent: NestedWorkflow, createOverlays=False):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.
@@ -49,6 +50,8 @@ class PngExportWorkflow(WorkflowDir):
         )
 
         self.createMergedSummaries()
+        if createOverlays:
+            self.createOverlays()
 
     def _exportSinglePcbImage(self, compImgsFile):
         outDf = pd.read_pickle(compImgsFile)
@@ -81,3 +84,17 @@ class PngExportWorkflow(WorkflowDir):
         concatDf = fns.readDataFrameFiles(self.summariesDir, pd.read_csv)
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
+
+    def createOverlays(self):
+      compositor = widgets.MaskCompositor()
+      summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
+      labels = summaries['label'].drop_duplicates()
+      labels[labels.str.len() == 0] = '<blank>'
+      for img in self.imagesDir.glob('*.png'):
+        compositor.clearOverlays()
+        mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
+        colors = np.unique(mask.ravel())
+        names = labels[colors[colors > 0]]
+        compositor.setImage(img)
+        compositor.addLabelMask(mask, names)
+        compositor.save(self.overlaysDir/img.with_suffix('.jpg').name)

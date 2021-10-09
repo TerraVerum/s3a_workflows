@@ -106,17 +106,16 @@ class ComponentImagesWorkflow(WorkflowDir):
             srcDir=srcDir,
             resizeOpts=self.input.get('resizeOpts', {}),
             labelField=self.labelField,
+            returnStats=True
         )
         idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported['label']]
         exported['numericLabel'] = mapping.index[idxs]
         if self.input['forceVerticalOrientation']:
             exported = self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
-        else:
-            exported['rotated'] = False
         # Unjumble row ordering
-        colOrder = ['instanceId', 'label', 'numericLabel', 'offset', 'rotated', 'image', 'labelMask']
-        # Ensure nothing was lost in the reordering
-        assert set(exported) == set(colOrder)
+        colOrder = ['instanceId', 'label', 'numericLabel', 'offset', 'rotation', 'image', 'labelMask']
+        # Ensure everything requested is present
+        assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
         exported.to_pickle((self.compImgsDir / name).with_suffix('.pkl'))
         if returnDf:
@@ -134,13 +133,15 @@ class ComponentImagesWorkflow(WorkflowDir):
         df['rotated'] = False
 
         for (idx, row), verts in zip(pd_iterdict(df, index=True), vertices):
-            xySpan = np.ptp(verts.stack(), axis=0)
+            *rect, _orient = cv.minAreaRect(verts.stack())
+            rotPoints = cv.boxPoints((*rect, _orient - row['rotation']))
+            xySpan = np.ptp(rotPoints, axis=0)
             # If width has a larger span than height, rotate so all components have the same preferred component
             # aspect
             if xySpan[0] > xySpan[1]:
                 for kk in 'image', 'labelMask':
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
-                df.at[idx, 'rotated'] = True
+                df.at[idx, 'rotation'] += 90
         return df
 
     def createAllCompImgs(self, fullImagesDir):
@@ -175,7 +176,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         labelField: PrjParam | str = None,
         tryMergingComps=False,
         resizeOpts: dict=None,
-        forceVerticalOrientation=True
+        forceVerticalOrientation=False
     ):
         """
         Entry point for creating image features
