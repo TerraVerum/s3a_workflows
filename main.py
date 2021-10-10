@@ -58,7 +58,7 @@ def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, 
         trainLinknet=trainLinknet and (labelMap is not None),
         reset=reset
     )
-    if labelMapFile is None:
+    if labelMap is None:
         mwf.disableStages(TrainValidateTestSplitWorkflow)
     # mwf.disableStages(ComponentImagesWorkflow, PngExportWorkflow, RegionPropertiesWorkflow, TrainValidateTestSplitWorkflow)
     mwf.run(
@@ -75,6 +75,7 @@ def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, 
 
 def main_rgbFeatures512(**kwargs):
     outFolder = kwargs.pop('outputFolder', None) or Path.home()/'Desktop/rgb_features_512'
+    outFolder = Path(outFolder)
     labelMapFile = kwargs.pop('labelMapFile', None) or outFolder/'aliased_labels.csv'
     main(**kwargs, outputFolder=outFolder, labelMapFile=labelMapFile)
 
@@ -84,8 +85,8 @@ def main_cli():
     argv = sys.argv[1:].copy()
     # Prevent failure for rgb512 parsing
     for kk in 'outputFolder', 'labelMapFile':
-        if f'--{kk}' not in argv:
-            argv += [f'--{kk}', None]
+      if not any(a.startswith(f'--{kk}') for a in argv):
+          argv += [f'--{kk}', 'None']
     args = parser.parse_args(argv)
     main_rgbFeatures512(**vars(args))
 

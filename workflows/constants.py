@@ -6,7 +6,7 @@ from autobom.constants import TEMPLATES_DIR
 from s3a.constants import PRJ_ENUMS
 
 def _init_fpic_folder():
-    fpic = os.getenv('FPIC_FOLDER')
+    fpic = os.getenv('FPIC_FOLDER') or os.getenv('FPIC_DIR')
     if not fpic:
         take_next = False
         for arg in map(str.lower, sys.argv):
