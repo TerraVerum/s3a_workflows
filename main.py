@@ -14,7 +14,7 @@ from workflows.tvtsplit import TrainValidateTestSplitWorkflow
 from workflows.png import PngExportWorkflow
 from workflows.compimgs import ComponentImagesWorkflow
 from workflows.regionpropfeats import RegionPropertiesWorkflow
-from workflows.utils import NestedWorkflow, WorkflowDir
+from workflows.utils import NestedWorkflow, WorkflowDir, stringifyDict
 
 class MainWorkflow(NestedWorkflow):
     name = 'Main Workflow'
@@ -47,37 +47,30 @@ class MainWorkflow(NestedWorkflow):
         for cls in stageClasses:
             self.get(cls).disabled = True
 
-def main(outputFolder, labelMapFile, inputAnnPath='', trainLinknet=True, reset=False, **kwargs):
+def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, reset=False, **kwargs):
+    if labelMapFile is None or not Path(labelMapFile).exists():
+        labelMap = None
+    else:
+        labelMap = pd.read_csv(labelMapFile, index_col=['numeric_label'])
     mwf = MainWorkflow(
         outputFolder,
         createDirs=True,
-        trainLinknet=trainLinknet,
+        trainLinknet=trainLinknet and (labelMap is not None),
         reset=reset
     )
+    if labelMapFile is None:
+        mwf.disableStages(TrainValidateTestSplitWorkflow)
     # mwf.disableStages(ComponentImagesWorkflow, PngExportWorkflow, RegionPropertiesWorkflow, TrainValidateTestSplitWorkflow)
     mwf.run(
-        annotationPath=inputAnnPath or FPIC_SMDS,
-        labelMap=pd.read_csv(labelMapFile, index_col=['numeric_label']),
+        annotationPath=annotationPath or FPIC_SMDS,
+        labelMap=labelMap,
         **SMD_INIT_OPTS,
         resizeOpts=DEFAULT_RESIZE_OPTS,
         **kwargs
     )
 
     # Some values are unrepresentable in their natural form (e.g. Paths)
-    def cvt(item):
-        if isinstance(item, dict):
-            for kk, vv in item.items():
-                item[kk] = cvt(vv)
-        elif isinstance(item, tuple):
-            item = tuple(cvt(list(item)))
-        elif isinstance(item, list):
-            for ii, el in enumerate(item):
-                item[ii] = cvt(el)
-        elif not isinstance(item, (int, float, bool, str, type(None))):
-            item = str(item)
-        return item
-
-    state = cvt(mwf.saveState(includeDefaults=True))
+    state = stringifyDict(mwf.saveState(includeDefaults=True))
     fns.saveToFile(state, mwf.workflowDir / 'config.yml')
 
 def main_rgbFeatures512(**kwargs):
@@ -87,9 +80,9 @@ def main_rgbFeatures512(**kwargs):
 
 def main_cli():
     parser = fns.makeCli(main)
-    # Prevent failure for rgb512 parsing
 
     argv = sys.argv[1:].copy()
+    # Prevent failure for rgb512 parsing
     for kk in 'outputFolder', 'labelMapFile':
         if f'--{kk}' not in argv:
             argv += [f'--{kk}', None]

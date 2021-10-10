@@ -301,3 +301,17 @@ try:
 except ImportError:
     # Joblib not available
     pass
+
+
+def stringifyDict(item):
+    if isinstance(item, dict):
+        for kk, vv in item.items():
+            item[kk] = stringifyDict(vv)
+    elif isinstance(item, tuple):
+        item = tuple(stringifyDict(list(item)))
+    elif isinstance(item, list):
+        for ii, el in enumerate(item):
+            item[ii] = stringifyDict(el)
+    elif not isinstance(item, (int, float, bool, str, type(None))):
+        item = str(item)
+    return item
