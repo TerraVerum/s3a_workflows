@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import functools
 import typing as t
 from pathlib import Path
@@ -13,8 +14,10 @@ from s3a.generalutils import pd_iterdict
 from utilitys import fns, PrjParam
 from utilitys.typeoverloads import FilePath
 
-from .constants import DEBUG, FPIC_SMDS, FPIC_IMAGES
+from . import constants
+from .constants import FPIC_SMDS, FPIC_IMAGES
 from .utils import WorkflowDir, RegisteredPath
+
 
 class ComponentImagesWorkflow(WorkflowDir):
     """
@@ -152,7 +155,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             srcDir=fullImagesDir,
             resizeOpts=self.input['resizeOpts'],
             descr='Creating component image pickle files',
-            debug=DEBUG,
+            debug=constants.DEBUG,
         )
 
     def mergeCompImgs(self):

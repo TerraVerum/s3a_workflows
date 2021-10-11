@@ -7,9 +7,10 @@ import pandas as pd
 from s3a import generalutils as gutils
 from utilitys import fns, widgets
 
+from . import constants
 from .compimgs import ComponentImagesWorkflow
-from .constants import DEBUG
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
+
 
 class PngExportWorkflow(WorkflowDir):
 
@@ -46,7 +47,7 @@ class PngExportWorkflow(WorkflowDir):
             descr="Exporting Png Files",
             showProgress=True,
             applyAsync=True,
-            debug=DEBUG,
+            debug=constants.DEBUG,
         )
 
         self.createMergedSummaries()

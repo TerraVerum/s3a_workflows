@@ -13,7 +13,7 @@ from s3a.generalutils import pd_iterdict
 from sklearn.model_selection import train_test_split
 from utilitys import fns
 
-from .constants import DEBUG
+from . import constants
 from .png import PngExportWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
 
@@ -93,7 +93,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             (trainSet, otherSet),
             extraArgs=(exportWf,),
             descr='Forming Train/Val/Test Sets',
-            debug=DEBUG
+            debug=constants.DEBUG
         )
 
     def _exportDatatypePortion(self, dirSummaryMap: dict, exportWf):

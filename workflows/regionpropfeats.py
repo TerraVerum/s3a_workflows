@@ -9,8 +9,9 @@ from s3a.parameditors.table import TableData
 from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
 
+from . import constants
 from .compimgs import ComponentImagesWorkflow
-from .constants import FPIC_FOLDER, DEBUG
+from .constants import FPIC_FOLDER
 from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
 
 SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
@@ -84,7 +85,7 @@ class RegionPropertiesWorkflow(WorkflowDir):
             fns.naturalSorted(compImgsWf.formattedInputPath.glob('*.csv')),
             returnDf=False,
             descr='Forming Region Properties',
-            debug=DEBUG
+            debug=constants.DEBUG
         )
         # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionpropFeaturesDir, pd.read_csv)

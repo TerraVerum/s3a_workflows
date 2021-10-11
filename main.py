@@ -10,6 +10,7 @@ pg.mkQApp()
 
 from utilitys import fns
 from workflows.constants import SMD_INIT_OPTS, DEFAULT_RESIZE_OPTS, FPIC_SMDS
+import workflows.constants
 from workflows.tvtsplit import TrainValidateTestSplitWorkflow
 from workflows.png import PngExportWorkflow
 from workflows.compimgs import ComponentImagesWorkflow
@@ -47,7 +48,9 @@ class MainWorkflow(NestedWorkflow):
         for cls in stageClasses:
             self.get(cls).disabled = True
 
-def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, reset=False, **kwargs):
+def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, reset=False, multiprocess=False, **kwargs):
+    if multiprocess:
+      workflows.constants.DEBUG = False
     if labelMapFile is None or not Path(labelMapFile).exists():
         labelMap = None
     else:
