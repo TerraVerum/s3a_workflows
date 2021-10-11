@@ -53,6 +53,7 @@ def main(outputFolder, labelMapFile=None, annotationPath='', trainLinknet=True, 
       workflows.constants.DEBUG = False
     if labelMapFile is None or not Path(labelMapFile).exists():
         labelMap = None
+        trainLinknet = False
     else:
         labelMap = pd.read_csv(labelMapFile, index_col=['numeric_label'])
     mwf = MainWorkflow(
