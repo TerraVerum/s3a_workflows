@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import typing as t
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -64,7 +65,6 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         labelMap: pd.DataFrame=None,
         balanceClasses=True,
         balanceFunc='median',
-        replaceSamps=False,
         valPct=0.15,
         testPct=0.15,
         replace=False,
@@ -73,10 +73,16 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     ):
         exportWf = parent.get(PngExportWorkflow)
         fullSummary = pd.read_csv(exportWf.summaryFile)
-        summary = self.createGetFilteredSummaryDf(
-            fullSummary,
-            labelMap
-        )
+        if self.filteredSummaryFile.exists():
+            summary = pd.read_csv(self.filteredSummaryFile, na_filter=False)
+        else:
+            summary = self.createGetFilteredSummaryDf(
+                fullSummary,
+                labelMap
+            )
+        if labelMap is None:
+            warnings.warn(f'Since labelMap is *None*, "{self.name}" can\'t continue.', RuntimeWarning)
+            return
         if 'numeric_label' in labelMap.columns:
             labelMap = labelMap.set_index('numeric_label')
 

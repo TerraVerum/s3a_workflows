@@ -1,5 +1,29 @@
 from .compimgs import ComponentImagesWorkflow
 from .png import PngExportWorkflow
-from .imagefeats import ImageToFeatureWorkflow
 from .regionpropfeats import RegionPropertiesWorkflow
+# Hold off on this for now
+# from .imagefeats import FeatureTransformerWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
+from .utils import WorkflowDir, NestedWorkflow
+
+# It would be easy enough to automate this, but it is better to ensure proper processing order
+__all__  = [
+    'ComponentImagesWorkflow',
+    'RegionPropertiesWorkflow',
+    'PngExportWorkflow',
+    'TrainValidateTestSplitWorkflow',
+    'WorkflowDir',
+    'NestedWorkflow'
+]
+
+Workflow_T = (WorkflowDir, NestedWorkflow)
+
+def allWorkflows():
+    import sys, inspect
+    ret = {}
+    module = sys.modules[__name__]
+    for name in __all__:
+        cls = module.__dict__[name]
+        if inspect.isclass(cls) and issubclass(cls, Workflow_T) and cls not in Workflow_T:
+            ret[cls.name or name] = cls
+    return ret

@@ -15,7 +15,7 @@ from utilitys import fns
 from .compimgs import ComponentImagesWorkflow
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
 
-class ImageToFeatureWorkflow(WorkflowDir):
+class FeatureTransformerWorkflow(WorkflowDir):
     transformersPath = RegisteredPath()
     # imageFeaturesDir = RegisteredPath()
 

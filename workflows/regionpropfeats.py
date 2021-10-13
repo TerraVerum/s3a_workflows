@@ -11,10 +11,7 @@ from utilitys import fns
 
 from . import constants
 from .compimgs import ComponentImagesWorkflow
-from .constants import FPIC_FOLDER
 from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
-
-SMD_FOLDER = FPIC_FOLDER/'smd_annotation'
 
 # -----
 # Various image features

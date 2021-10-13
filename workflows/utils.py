@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import os.path
 import re
 import shutil
@@ -131,7 +132,7 @@ class NestedWorkflow(NestedProcess):
         reset=False
     ):
         super().__init__(name)
-        self.workflowDir = folder
+        self.workflowDir = Path(folder)
         self.stageCounter = 1
         if reset:
             self.resetRegisteredPaths()
@@ -176,6 +177,22 @@ class NestedWorkflow(NestedProcess):
         # Requested stage type is not present
         raise KeyError(f'Workflow type "{wfClass}" is not present')
 
+def argparseHelpAction(nested: NestedWorkflow):
+    class NestedWorkflowHelp(argparse.Action):
+        def __init__(self, **kwargs):
+            kwargs.update(nargs=0)
+            super().__init__(**kwargs)
+
+        def __call__(self, parser, *args, **kwargs) -> None:
+            state = {}
+            for stage in nested.stages_flattened:
+                substate = stage.saveState(includeDefaults=True)
+                if isinstance(substate, dict):
+                    state.update(next(iter(substate.values())))
+            newCli = fns.makeCli(nested.__init__, convertArgs=False, **state)
+            newCli.print_help()
+            parser.exit()
+    return NestedWorkflowHelp
 
 class AliasedMaskResolver:
     classInfo: pd.DataFrame
@@ -279,39 +296,31 @@ class AliasedMaskResolver:
         mask[mask > 0] = self.classInfo.loc[mask[mask > 0], 'numeric_class'].to_numpy(int)
         return mask
 
-# Override the Parallel class since there's no easy way to provide more informative print messages
-try:
-    import joblib
-    class NamedParallel(joblib.Parallel):
-        def __init__(self, *args, name=None, **kwargs):
-            super().__init__(*args, **kwargs)
-            if name is None:
-                name = str(self)
-            self.name = name
-
-        def _print(self, msg, msg_args):
-            if not self.verbose:
-                return
-            if self.verbose < 50:
-                writer = sys.stderr.write
-            else:
-                writer = sys.stdout.write
-            msg = msg % msg_args
-            writer('[%s]: %s\n' % (self.name, msg))
-except ImportError:
-    # Joblib not available
-    pass
-
-
-def stringifyDict(item):
+_DISCARDED = object()
+def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
+    discards = []
     if isinstance(item, dict):
         for kk, vv in item.items():
-            item[kk] = stringifyDict(vv)
+            vv = stringifyDict(vv)
+            item[kk] = vv
+            if vv is _DISCARDED:
+                discards.append(kk)
     elif isinstance(item, tuple):
         item = tuple(stringifyDict(list(item)))
     elif isinstance(item, list):
         for ii, el in enumerate(item):
-            item[ii] = stringifyDict(el)
+            el = stringifyDict(el)
+            item[ii] = el
+            if el is _DISCARDED:
+                discards.append(ii)
+    # Special known case which shouldn't be preserved
+    elif isinstance(item, unconvertable):
+        item =  _DISCARDED
     elif not isinstance(item, (int, float, bool, str, type(None))):
         item = str(item)
+    # Only happens when item is dict or list
+    if discards:
+        # Reverse for list case
+        for kk in reversed(discards):
+            del item[kk]
     return item

@@ -15,7 +15,6 @@ from utilitys import fns, PrjParam
 from utilitys.typeoverloads import FilePath
 
 from . import constants
-from .constants import FPIC_SMDS, FPIC_IMAGES
 from .utils import WorkflowDir, RegisteredPath
 
 
@@ -59,9 +58,9 @@ class ComponentImagesWorkflow(WorkflowDir):
         Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
         by image to allow multiprocessing on subsections of components
         """
-        annotationPath = Path(annotationPath)
         if annotationPath is None:
             return pd.DataFrame()
+        annotationPath = Path(annotationPath)
         if annotationPath.is_dir():
             df = fns.readDataFrameFiles(annotationPath, SerialImporter.readFile)
         else:
@@ -173,8 +172,8 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        annotationPath=FPIC_SMDS,
-        fullImagesDir=FPIC_IMAGES,
+        annotationPath=None,
+        imagesPath=None,
         s3aProj: FilePath | dict = None,
         labelField: PrjParam | str = None,
         tryMergingComps=False,
@@ -184,8 +183,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         Entry point for creating image features
         :param annotationPath: CSV image annotations to convert to comp imgs
-        :param fullImagesDir: Directory of full-sized PCB images. If *None*, defaults to FPIC pcb_image if FPIC
-          is set on the system
+        :param imagesPath: Directory of full-sized PCB images
         :param s3aProj: S3A project file or dict for interpreting csvs
         :param labelField: Field to use as label moving forward
         :param forceVerticalOrientation: Whether all exported images should be aligned such that their longest axis is
@@ -204,7 +202,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             raise ValueError('A label field must be selected before images can be exported')
         self.createFormattedInputs(annotationPath)
 
-        self.createAllCompImgs(fullImagesDir)
+        self.createAllCompImgs(imagesPath)
 
         if tryMergingComps:
             merged = self.mergeCompImgs()
