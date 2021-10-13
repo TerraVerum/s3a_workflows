@@ -14,7 +14,7 @@ from s3a.generalutils import pd_iterdict
 from sklearn.model_selection import train_test_split
 from utilitys import fns
 
-from . import constants
+from . import constants, ComponentImagesWorkflow
 from .png import PngExportWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
 
@@ -31,9 +31,20 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         labelMaskFiles: t.List[Path | np.ndarray],
         resolver: AliasedMaskResolver,
         outputNames: t.Sequence[str] = None,
+        treatAsCache=False
     ):
         if outputNames is None:
             outputNames = labelMaskFiles
+        outputNames = np.array([os.path.basename(name) for name in outputNames])
+
+        if treatAsCache:
+            newFiles = set()
+            for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
+                newFiles.update(self._getNewAndDeleteUnusedImages(outputNames, subdir))
+            membership = np.isin(outputNames, newFiles)
+            labelMaskFiles = np.array(labelMaskFiles, dtype=object)[membership]
+            outputNames = outputNames[membership]
+
         for mask, filename in zip(labelMaskFiles, outputNames):
             mask = resolver.getMaybeResolve(mask)
             # Fetch out here to avoid fetching inside loop
@@ -41,8 +52,15 @@ class LabelMaskResolverWorkflow(WorkflowDir):
                 [None, 'binary', 'viridis'],
                 [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
             ):
-                filename = os.path.basename(filename)
                 resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
+
+    @staticmethod
+    def _getNewAndDeleteUnusedImages(shouldExist: t.Sequence[str], folder: Path):
+        existing = np.array([im.name for im in folder.glob('*.png')])
+        for file in np.setdiff1d(existing, shouldExist):
+            # These already exist, but shouldn't under the present mapping
+            os.unlink(os.path.join(folder, file))
+        return np.setdiff1d(shouldExist, existing)
 
 class TrainValidateTestSplitWorkflow(WorkflowDir):
     resolver = AliasedMaskResolver()
@@ -81,43 +99,56 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
                 labelMap
             )
         if labelMap is None:
-            warnings.warn(f'Since labelMap is *None*, "{self.name}" can\'t continue.', RuntimeWarning)
-            return
+            warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
+            labelMap = pd.read_csv(parent.get(ComponentImagesWorkflow).allLabelsFile, index_col='numeric_label')
         if 'numeric_label' in labelMap.columns:
             labelMap = labelMap.set_index('numeric_label')
 
         self.resolver = AliasedMaskResolver(labelMap['label'])
         self.resolver.classInfo.to_csv(self.classInfoFile)
 
-        trainSet = {self.trainDir: summary[summary['dataType'] == 'train']}
-        otherSet = {}
-        for dir_, typ in zip([self.validateDir, self.testDir], [self.VALIDATION_NAME, self.TEST_NAME]):
-            otherSet[dir_] = summary[summary['dataType'] == typ]
+        datasets = []
+        for dir_, typ in zip([self.trainDir, self.validateDir, self.testDir], [self.TRAIN_NAME, self.VALIDATION_NAME, self.TEST_NAME]):
+            data = summary[summary['dataType'] == typ]
+            datasets.append(
+                {'dir': dir_, 'data': data}
+            )
 
         fns.mproc_apply(
             self._exportDatatypePortion,
-            (trainSet, otherSet),
+            datasets,
             extraArgs=(exportWf,),
             descr='Forming Train/Val/Test Sets',
             debug=constants.DEBUG
         )
 
-    def _exportDatatypePortion(self, dirSummaryMap: dict, exportWf):
+    def _exportDatatypePortion(self, dirAndData: dict, exportWf: PngExportWorkflow):
         PEW = PngExportWorkflow
         linkFunc = self._getLinkFunc()
-        for destDir, df in dirSummaryMap.items():
-            maskWf = LabelMaskResolverWorkflow(destDir, createDirs=True)
-            # MaskWf generates colored, normal, and binary scaled masks
-            maskWf.runWorkflow(
-                df['compImageFile'].apply(
-                    lambda el: exportWf.labelMasksDir / el),
-                self.resolver
-            )
-            imageDir = destDir / PEW.imagesDir
-            imageDir.mkdir(exist_ok=True)
-            for row in pd_iterdict(df):
-                compFile = row['compImageFile']
-                linkFunc(exportWf.imagesDir / compFile, imageDir / compFile)
+        destDir = dirAndData['dir']
+        df = dirAndData['data']
+        maskWf = LabelMaskResolverWorkflow(destDir, createDirs=True)
+        # MaskWf generates colored, normal, and binary scaled masks
+        maskWf.runWorkflow(
+            df['compImageFile'].apply(
+                lambda el: exportWf.labelMasksDir / el
+            ),
+            self.resolver,
+            treatAsCache=True
+        )
+
+        imageDir = destDir / PEW.imagesDir
+        imageDir.mkdir(exist_ok=True)
+        keepImages = df['compImageFile']
+        existing = np.array([im.name for im in imageDir.glob('*.png')])
+        newImages = np.setdiff1d(keepImages, existing)
+        toDelete = np.setdiff1d(existing, keepImages)
+        for name in toDelete:
+            exportWf.imagesDir.joinpath(name).unlink()
+        for name in newImages:
+            dst = imageDir / name
+            src = exportWf.imagesDir / name
+            linkFunc(src, dst)
 
     def createGetFilteredSummaryDf(self, summaryDf, labelInfoDf):
         filtered = self._filterByLabel(summaryDf, labelInfoDf)
