@@ -5,6 +5,7 @@ from .regionpropfeats import RegionPropertiesWorkflow
 # from .imagefeats import FeatureTransformerWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
 from .utils import WorkflowDir, NestedWorkflow
+from .models.linknet import LinkNetTrainingWorkflow
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
 __all__  = [
@@ -12,6 +13,7 @@ __all__  = [
     'RegionPropertiesWorkflow',
     'PngExportWorkflow',
     'TrainValidateTestSplitWorkflow',
+    'LinkNetTrainingWorkflow',
     'WorkflowDir',
     'NestedWorkflow'
 ]
@@ -23,7 +25,7 @@ def allWorkflows():
     ret = {}
     module = sys.modules[__name__]
     for name in __all__:
-        cls = module.__dict__[name]
+        cls = getattr(module, name)
         if inspect.isclass(cls) and issubclass(cls, Workflow_T) and cls not in Workflow_T:
             ret[cls.name or name] = cls
     return ret

@@ -34,10 +34,14 @@ class MainWorkflow(NestedWorkflow):
         if multiprocess:
             workflows.constants.DEBUG = False
 
+        defaultClasses = allWorkflows()
         if stages is None:
-            stages = list(allWorkflows())
+            # By default, use all stages except linknet
+            stages = list(allWorkflows())[:-1]
         useClasses = self.resolvePartialWorkflowNames(stages)
-        for name, stageClass in allWorkflows().items():
+        if not isinstance(useClasses, list):
+            useClasses = [useClasses]
+        for name, stageClass in defaultClasses.items():
             stage = self.addWorkflow(stageClass, **kwargs)
             if stageClass not in useClasses:
                 stage.disabled = True
@@ -80,13 +84,8 @@ class MainWorkflow(NestedWorkflow):
             stageName = ''.join(stageName.split()).lower()
             matches = [formatted for matchName, formatted in wfNames.items() if stageName in matchName]
             if not any(matches):
-                # Treat linknet lazily to avoid importing tensorflow where possible
-                if 'linknet' in stageName:
-                    from workflows.models.linknet import LinkNetTrainingWorkflow
-                    wfClass = LinkNetTrainingWorkflow
-                else:
-                    raise KeyError(f'Stage "{stageName} not recognized, must resemble one of:\n'
-                                   f'{", ".join(list(_allWorkflows))}')
+                raise KeyError(f'Stage "{stageName}" not recognized, must resemble one of:\n'
+                               f'{", ".join(list(_allWorkflows))}')
             else:
                 formattedName = matches[0]
                 wfClass = _allWorkflows[formattedName]
@@ -96,8 +95,15 @@ class MainWorkflow(NestedWorkflow):
         return ret
 
     @classmethod
-    def runFromConfig(cls, outputFolder, config: dict|FilePath, **kwargs):
+    def runFromConfig(cls, config: dict|FilePath, outputFolder=None, **kwargs):
+        """
+        Runs a workflow based on a configuration that likely came from a previous run's call to `saveState`.
+        If no output folder is specified, it will be set to the parent folder of the config file.
+        Note that if `config` is a dict instead of a file, the output folder must be specified.
+        """
         if isinstance(config, FilePath.__args__):
+            if outputFolder is None:
+                outputFolder = Path(config).parent
             config = fns.attemptFileLoad(config)
         if 'Main Workflow' in config:
             # Pop the top level if given
@@ -107,10 +113,10 @@ class MainWorkflow(NestedWorkflow):
             if isinstance(stage, dict):
                 useConfig.update(stage)
         useNames = [name.split(maxsplit=1)[-1] for name in useConfig]
-        kwargs['stages'] = useNames
+        kwargs.setdefault('stages', useNames)
         init, run = MainWorkflow.splitInitAndRunKwargs(kwargs)
         mwf = MainWorkflow(outputFolder, **init)
-        mwf.updateInput(parent=mwf, **useConfig)
+        mwf.updateInput(**useConfig, graceful=True)
         return mwf.run(**run)
 
     @classmethod
