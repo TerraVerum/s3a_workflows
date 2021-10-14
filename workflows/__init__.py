@@ -1,11 +1,11 @@
 from .compimgs import ComponentImagesWorkflow
+from .models.linknet import LinkNetTrainingWorkflow
 from .png import PngExportWorkflow
 from .regionpropfeats import RegionPropertiesWorkflow
 # Hold off on this for now
 # from .imagefeats import FeatureTransformerWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
 from .utils import WorkflowDir, NestedWorkflow
-from .models.linknet import LinkNetTrainingWorkflow
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
 __all__  = [

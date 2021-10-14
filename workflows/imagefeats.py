@@ -9,11 +9,11 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from tqdm import tqdm
-
 from utilitys import fns
 
 from .compimgs import ComponentImagesWorkflow
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
+
 
 class FeatureTransformerWorkflow(WorkflowDir):
     transformersPath = RegisteredPath()

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import inspect
-import sys
 import typing as t
 from pathlib import Path
 
 # Some systems need qt initialized before cv gets imported
 import pyqtgraph as pg
+
 pg.mkQApp()
 
 from utilitys import fns, ProcessIO
@@ -14,7 +14,8 @@ from utilitys.typeoverloads import FilePath
 from workflows.constants import SMD_INIT_OPTS, DEFAULT_RESIZE_OPTS
 import workflows.constants
 from workflows import allWorkflows, Workflow_T
-from workflows.utils import NestedWorkflow, WorkflowDir, stringifyDict, argparseHelpAction
+from workflows.utils import NestedWorkflow, WorkflowDir, stringifyDict
+
 
 class MainWorkflow(NestedWorkflow):
     name = 'Main Workflow'

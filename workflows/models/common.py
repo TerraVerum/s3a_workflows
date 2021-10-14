@@ -11,6 +11,7 @@ from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
 
+
 class DataGenerator(Sequence):
     """
     A class that serves as a custom data generator for the Neural Network pipeline.

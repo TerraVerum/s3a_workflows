@@ -4,7 +4,6 @@ import argparse
 import os.path
 import re
 import shutil
-import sys
 import typing as t
 from pathlib import Path
 
@@ -12,11 +11,11 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
-
 from s3a import generalutils as gutils
 from utilitys import fns, NestedProcess, ProcessIO
-from utilitys.typeoverloads import FilePath
 from utilitys.processing import AtomicProcess
+from utilitys.typeoverloads import FilePath
+
 
 def defaultTitle(name, trimExprs, prefix, suffix):
     name = fns.pascalCaseToTitle(name).replace(' ', '_').lower() + suffix
