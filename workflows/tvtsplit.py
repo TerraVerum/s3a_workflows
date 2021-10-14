@@ -41,7 +41,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             newFiles = set()
             for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
                 newFiles.update(self._getNewAndDeleteUnusedImages(outputNames, subdir))
-            membership = np.isin(outputNames, list(newFiles))
+            membership = np.isin(outputNames, np.array(list(newFiles)))
             labelMaskFiles = np.array(labelMaskFiles, dtype=object)[membership]
             outputNames = outputNames[membership]
 

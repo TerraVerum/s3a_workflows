@@ -290,9 +290,8 @@ class AliasedMaskResolver:
         # Only keep known labels
         if not resolve:
             return mask
-        mask[(mask > 0) & ~np.isin(mask, self.classInfo.index)] = 0
+        mask[(mask > 0) & np.isin(mask, self.classInfo.index.to_numpy(), invert=True)] = 0
         # Account for aliasing
-        # Ravel since pandas doesn't like 2d indexing to broadcast
         mask[mask > 0] = self.classInfo.loc[mask[mask > 0], 'numeric_class'].to_numpy(int)
         return mask
 
