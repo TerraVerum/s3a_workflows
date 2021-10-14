@@ -27,11 +27,11 @@ class LabelMaskResolverWorkflow(WorkflowDir):
     labelMasksDir = RegisteredPath()
 
     def runWorkflow(
-        self,
-        labelMaskFiles: t.List[Path | np.ndarray],
-        resolver: AliasedMaskResolver,
-        outputNames: t.Sequence[str] = None,
-        treatAsCache=False
+      self,
+      labelMaskFiles: t.List[Path | np.ndarray],
+      resolver: AliasedMaskResolver,
+      outputNames: t.Sequence[str] = None,
+      treatAsCache=False
     ):
         if outputNames is None:
             outputNames = labelMaskFiles
@@ -41,7 +41,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             newFiles = set()
             for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
                 newFiles.update(self._getNewAndDeleteUnusedImages(outputNames, subdir))
-            membership = np.isin(outputNames, newFiles)
+            membership = np.isin(outputNames, list(newFiles))
             labelMaskFiles = np.array(labelMaskFiles, dtype=object)[membership]
             outputNames = outputNames[membership]
 
@@ -49,8 +49,8 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             mask = resolver.getMaybeResolve(mask)
             # Fetch out here to avoid fetching inside loop
             for cmap, dir_ in zip(
-                [None, 'binary', 'viridis'],
-                [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
+              [None, 'binary', 'viridis'],
+              [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
             ):
                 resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
 
@@ -78,17 +78,18 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     classInfoFile = RegisteredPath('.csv')
 
     def runWorkflow(
-        self,
-        parent: NestedWorkflow,
-        labelMap: pd.DataFrame=None,
-        balanceClasses=True,
-        balanceFunc='median',
-        valPct=0.15,
-        testPct=0.15,
-        replace=False,
-        testOnUnused=True,
-        maxTestSamps=None
+      self,
+      parent: NestedWorkflow,
+      labelMap: pd.DataFrame=None,
+      balanceClasses=True,
+      balanceFunc='median',
+      valPct=0.15,
+      testPct=0.15,
+      replace=False,
+      testOnUnused=True,
+      maxTestSamps=None
     ):
+        labelMap = self._resolveLabelMap(labelMap)
         exportWf = parent.get(PngExportWorkflow)
         fullSummary = pd.read_csv(exportWf.summaryFile)
         if self.filteredSummaryFile.exists():
@@ -98,12 +99,6 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
                 fullSummary,
                 labelMap
             )
-        if labelMap is None:
-            warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
-            labelMap = pd.read_csv(parent.get(ComponentImagesWorkflow).allLabelsFile, index_col='numeric_label')
-        if 'numeric_label' in labelMap.columns:
-            labelMap = labelMap.set_index('numeric_label')
-
         self.resolver = AliasedMaskResolver(labelMap['label'])
         self.resolver.classInfo.to_csv(self.classInfoFile)
 
@@ -158,6 +153,16 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
         filtered.to_csv(self.filteredSummaryFile, index=False)
         return filtered
+
+    def _resolveLabelMap(self, labelMap: pd.DataFrame | str=None):
+        if labelMap is None:
+            warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
+            labelMap = self.input['parent'].get(ComponentImagesWorkflow).allLabelsFile
+        if not isinstance(labelMap, (pd.Series, pd.DataFrame)):
+            labelMap = pd.read_csv(labelMap, index_col='numeric_label')
+        if 'numeric_label' in labelMap.columns:
+            labelMap = labelMap.set_index('numeric_label')
+        return labelMap
 
     @staticmethod
     def _filterByLabel(summaryDf, labelInfoDf):
