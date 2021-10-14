@@ -11,7 +11,6 @@ from . import constants
 from .compimgs import ComponentImagesWorkflow
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
 
-
 class PngExportWorkflow(WorkflowDir):
 
     TRAIN_NAME = 'train'
@@ -26,6 +25,10 @@ class PngExportWorkflow(WorkflowDir):
 
     summariesDir = RegisteredPath()
     summaryFile = RegisteredPath('.csv')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.compositor = widgets.MaskCompositor()
 
     def runWorkflow(self, parent: NestedWorkflow, createOverlays=False):
         """
@@ -86,16 +89,28 @@ class PngExportWorkflow(WorkflowDir):
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
 
-    def createOverlays(self):
-      compositor = widgets.MaskCompositor()
-      summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
-      labels = summaries['label'].drop_duplicates()
-      labels[labels.str.len() == 0] = '<blank>'
-      for img in self.imagesDir.glob('*.png'):
+    def createOverlays(self, labels: pd.Series=None):
+        """
+        Overlays masks on top of images and saves to a new directory
+        :param labels: Mapping of numeric mask value to its string label
+        """
+        if labels is None:
+            summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
+            labels = summaries['label'].drop_duplicates()
+            labels[labels.str.len() == 0] = '<blank>'
+
+        for img in self.imagesDir.glob('*.png'):
+            mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
+            outputFile = self.overlaysDir / img.with_suffix('.jpg').name
+            self.overlayMaskOnImage(img, mask, labels, outputFile)
+
+    def overlayMaskOnImage(self, image, mask, labelMap=None, outputFile=None):
+        compositor = self.compositor
         compositor.clearOverlays()
-        mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
         colors = np.unique(mask.ravel())
-        names = labels[colors[colors > 0]]
-        compositor.setImage(img)
+        names = labelMap[colors[colors > 0]]
+        compositor.setImage(image)
         compositor.addLabelMask(mask, names)
-        compositor.save(self.overlaysDir/img.with_suffix('.jpg').name)
+        if outputFile is not None:
+            compositor.save(outputFile)
+        return compositor

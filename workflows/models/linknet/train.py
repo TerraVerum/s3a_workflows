@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os.path
 import typing as t
+from pathlib import Path
 
 import cv2 as cv
 import numpy as np
@@ -50,7 +52,6 @@ def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
 class LinkNetTrainingWorkflow(WorkflowDir):
     # Generated during workflow
     graphsDir = RegisteredPath()
-    savedTrainingWeightsFile = RegisteredPath('.npy')
     savedModelFile = RegisteredPath('.h5')
     checkpointsDir = RegisteredPath()
     predictionsDir = RegisteredPath()
@@ -60,8 +61,11 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         parent: NestedWorkflow,
         learningRate=0.001,
         batchSize=8,
-        epochs=1000
+        epochs=1000,
+        numPredictionsDuringTrain=0
     ):
+        # Find out how many digits are needed to store the epoch number
+        epochFormatter = len(str(epochs))
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
@@ -107,28 +111,38 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             linknetModel = LinkNet(height, width, numOutputClasses).get_model()
             linknetModel.compile(optimizer=optimizer, loss=loss, metrics=metrics)
 
-        linknetTrainingPath = [linknetModel.get_weights()]
         linknetTensorboard = TensorBoard(
             log_dir=self.graphsDir,
             histogram_freq=0,
             write_graph=True,
             write_images=True,
         )
+        modelCPFormat = f'{{epoch:0{epochFormatter}d}}.h5'
         linknetModelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpointsDir / "{epoch:02d}.h5",
+            filepath=self.checkpointsDir / modelCPFormat,
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
         )
-        linknetWeightSaving = LambdaCallback(
-            on_epoch_end=(lambda epoch, logs: linknetTrainingPath.append(linknetModel.get_weights()))
-        )
         linknetCallbacks = [
             linknetTensorboard,
             linknetModelcheckpoint,
-            linknetWeightSaving,
             earlyStopping,
         ]
+
+        if numPredictionsDuringTrain > 0:
+            rng = np.random.default_rng(42)
+            testFiles = rng.choice(
+                fns.naturalSorted(tvtWf.testDir.joinpath(PEW.imagesDir).glob('*.png')),
+                numPredictionsDuringTrain,
+                replace=False
+            )
+            def predictAfterEpoch(epoch, logs):
+                outDir = self.predictionsDir/f'{epoch:02d}'
+                self.savePredictions(linknetModel, testFiles, numOutputClasses, outDir)
+                labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class')['label']
+                PEW(outDir).createOverlays(labels=labels)
+            linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
         linknetModel.fit(
             trainGenerator,
@@ -141,34 +155,56 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         linknetModel.evaluate(testGenerator, steps=testSteps)
 
-        np.save(
-            self.savedTrainingWeightsFile,
-            np.array(linknetTrainingPath, dtype=object),
-        )
         linknetModel.save(self.savedModelFile)
-        testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
-        self.savePredictions(linknetModel, testFiles, numClasses=numOutputClasses)
+        # Only need to save final if there was no intermediate saving
+        if numPredictionsDuringTrain <= 0:
+            testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
+            self.savePredictions(linknetModel, testFiles, numClasses=numOutputClasses)
         export_training_data(self.graphsDir, self.name)
 
-    def savePredictions(self, model, testImagePaths, numClasses=None):
+    def savePredictions(self, model, testImagePaths, outputDir=None):
         """
         Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
         :param model: The Neural Network model file to generate the predictions of the data.
         :param testImagePaths: Images to save the predictions of
-        :param numClasses: Total number of classes in all train/test/validate data
+        :param outputDir: Where to save the output predictions. Defaults to `self.predictionsDir` if unspecified
         """
-        predictionPath = self.predictionsDir
-        predictionPath.mkdir(exist_ok=True)
-        maskWf = LabelMaskResolverWorkflow(predictionPath, createDirs=True)
-        resolver = AliasedMaskResolver(np.arange(numClasses) if numClasses else None)
-        for file in tqdm(testImagePaths, desc=f"Saving Predictions to {predictionPath}"):
+        if outputDir is None:
+            outputDir = self.predictionsDir
+        outputDir = Path(outputDir)
+        outputDir.mkdir(exist_ok=True)
+        legendVisible = None
+        if 'parent' in self.input:
+            tvtWf = self.input['parent'].get(TrainValidateTestSplitWorkflow)
+            pngWf = self.input['parent'].get(PngExportWorkflow)
+            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class')['label']
+            if len(labelMap.unique()) <= 2:
+                # No need for a legend if there's only foreground/background
+                legendVisible = pngWf.compositor.legend.isVisible()
+                pngWf.compositor.legend.setVisible(False)
+        else:
+            pngWf = PngExportWorkflow('')
+            labelMap = None
+        compositorProps = pngWf.compositor.propertiesProc
+        oldSettings = dict(compositorProps.input)
+        compositorProps.run(opacity=0.7, colormap='viridis')
+        for file in tqdm(testImagePaths, desc=f"Saving Predictions to {outputDir}"):
             img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
-            maskWf.runWorkflow([prediction], resolver, [file])
+            outFile = outputDir.joinpath(os.path.basename(file)).with_suffix('.jpg')
+            pngWf.overlayMaskOnImage(img[0], prediction, labelMap, outFile)
+        compositorProps.run(**oldSettings)
+        if legendVisible is not None:
+            pngWf.compositor.legend.setVisible(legendVisible)
 
-    def loadAndTestModel(self, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, modelFile: FilePath=None):
+    def loadAndTestModel(
+        self,
+        testImagePaths: t.Sequence[FilePath]=None,
+        modelFile: FilePath=None,
+        outputDir=None
+    ):
         if modelFile:
             modelFile = self.workflowDir / modelFile
         else:
@@ -182,5 +218,14 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         model = load_model(modelFile, compile = True, custom_objects = customObjects)
         if testImagePaths:
-            self.savePredictions(model, testImagePaths, numClasses)
+            self.savePredictions(model, testImagePaths, outputDir)
+        return model
+
+    def loadAndTestWeights(self, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, weightsFile=None):
+        if numClasses is None and 'parent' in self.input:
+            numClasses = len(pd.read_csv(self.input['parent'].get(TrainValidateTestSplitWorkflow).classInfoFile, usecols=['label']))
+        model = LinkNet(512, 512, numClasses).get_model()
+        model.load_weights(weightsFile)
+        if testImagePaths:
+            self.savePredictions(model, testImagePaths)
         return model
