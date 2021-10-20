@@ -20,7 +20,7 @@ class MainWorkflow(NestedWorkflow):
     def __init__(
         self,
         folder,
-        stages: list[str | Workflow_T]=None,
+        stages: list[str | Workflow_T],
         multiprocess=False,
         createDirs=True,
         reset=False,
@@ -44,9 +44,6 @@ class MainWorkflow(NestedWorkflow):
             workflows.constants.DEBUG = False
 
         defaultClasses = allWorkflows()
-        if stages is None:
-            # By default, use all stages except linknet
-            stages = list(allWorkflows())[:-1]
         useClasses = self.resolvePartialWorkflowNames(stages)
         if not isinstance(useClasses, list):
             useClasses = [useClasses]
