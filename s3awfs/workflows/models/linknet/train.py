@@ -70,8 +70,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param learningRate: Adam learning rate during training
         :param batchSize: train batch size
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
-        :param numPredictionsDuringTrain: Nothing happens if <= 0. Otherwise, at the end of each epoch, prediction
-          images will be generated on this many samples of the holdout set for visualization purposes
+        :param numPredictionsDuringTrain: At the end of each epoch, prediction images will be generated on
+          this many samples of the holdout set for visualization purposes. If 0 or less, nothing happens.
         """
         # Find out how many digits are needed to store the epoch number
         epochFormatter = len(str(epochs))
