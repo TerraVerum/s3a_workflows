@@ -27,11 +27,11 @@ class LabelMaskResolverWorkflow(WorkflowDir):
     labelMasksDir = RegisteredPath()
 
     def runWorkflow(
-      self,
-      labelMaskFiles: t.List[Path | np.ndarray],
-      resolver: AliasedMaskResolver,
-      outputNames: t.Sequence[str] = None,
-      treatAsCache=False
+        self,
+        labelMaskFiles: t.List[Path | np.ndarray],
+        resolver: AliasedMaskResolver,
+        outputNames: t.Sequence[str] = None,
+        treatAsCache=False
     ):
         if outputNames is None:
             outputNames = labelMaskFiles
@@ -49,8 +49,8 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             mask = resolver.getMaybeResolve(mask)
             # Fetch out here to avoid fetching inside loop
             for cmap, dir_ in zip(
-              [None, 'binary', 'viridis'],
-              [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
+                [None, 'binary', 'viridis'],
+                [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
             ):
                 resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
 
@@ -78,17 +78,34 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     classInfoFile = RegisteredPath('.csv')
 
     def runWorkflow(
-      self,
-      parent: NestedWorkflow,
-      labelMap: pd.DataFrame=None,
-      balanceClasses=True,
-      balanceFunc='median',
-      valPct=0.15,
-      testPct=0.15,
-      replace=False,
-      testOnUnused=True,
-      maxTestSamps=None
+        self,
+        parent: NestedWorkflow,
+        labelMap: pd.DataFrame=None,
+        balanceClasses=True,
+        balanceFunc='median',
+        valPct=0.15,
+        testPct=0.15,
+        replace=False,
+        testOnUnused=True,
+        maxTestSamps=None
     ):
+        """
+        From a set of label and image files, forms train, validate, and test subsets.
+
+        :param parent: NestedWorkflow holding PngExportWorkflow
+        :param labelMap: Dataframe with numeric_label and label columns. Matches a class label against its numeric
+          mask value. One class is allowed to have multiple numeric labels. If not provided, it will default to
+          ``ComponentImagesWorkflow.allLabelsFile``.
+        :param balanceClasses: If *True*, ``balanceFunc`` is called on the number of items in each class to subsample
+          overrepresented data.
+        :param balanceFunc: See ``balanceClasses`` description. Disabled if that is *False*.
+        :param valPct: Fraction (between 0 and 1) of validation data
+        :param testPct: Fraction (between 0 and 1) of test/holdout data
+        :param replace: If *True*, sampling of validation and test data occurs with replacement
+        :param testOnUnused: If *True*, holdout data can originate from data that was discarded either through class
+          exclusion or class balancing.
+        :param maxTestSamps: Max number of holdout samples. If *None*, no limit is enforced.
+        """
         labelMap = self._resolveLabelMap(labelMap)
         exportWf = parent.get(PngExportWorkflow)
         fullSummary = pd.read_csv(exportWf.summaryFile)

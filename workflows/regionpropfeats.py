@@ -24,16 +24,22 @@ def maxDim(img):
 def minDim(img):
     return min(img.shape)
 
+propNames = list(regionprops(np.ones((5,5), int))[0]) + ['aspect']
+for unused in ['convex_image', 'coords', 'filled_image', 'image', 'centroid', 'label', 'moments', 'slice']:
+    propNames.remove(unused)
+
 class RegionPropertiesWorkflow(WorkflowDir):
     io = ComponentIO(TableData(TEMPLATES_DIR/'proj_smd.s3aprj'))
 
     regionpropFeaturesFile = RegisteredPath('.csv') # Concatenated features
     regionpropFeaturesDir = RegisteredPath() # Per-image features
 
-    def textAnnToRegionpropsCsv(self, annFile: Path, returnDf=True):
+    def textAnnToRegionpropsCsv(self, annFile: Path, useFeatures=None, returnDf=False):
         """
         Creates regionprops features for an S3A annotation file. Must have a "vertices" column
         """
+        if useFeatures is None:
+            useFeatures = propNames
         df = self.io.importSerialized.readFile(annFile, usecols=['Vertices', 'Instance ID'])
         vertices, errs = deserialize(RTF.VERTICES, df['Vertices'])
         if len(errs):
@@ -46,17 +52,17 @@ class RegionPropertiesWorkflow(WorkflowDir):
         # (out of memory error happened with enough files being multiprocessed)
         masks = vertices.apply(lambda el: el.removeOffset().toMask(asBool=False)).to_list()
 
-        # Can't easily choose "all properties" in table version, so get a sample of available
-        # properties here
-        propNames = list(regionprops(masks[0])[0])
-        for unused in ['convex_image', 'coords', 'filled_image', 'image', 'centroid', 'label', 'moments', 'slice']:
-            propNames.remove(unused)
+        if 'aspect' in useFeatures:
+            useFeatures.remove('aspect')
+            extra = [aspect]
+        else:
+            extra = ()
         allProps = []
         for mask in masks:
             outDict = regionprops_table(
                 mask,
-                properties=propNames,
-                extra_properties=(aspect, maxDim, minDim)
+                properties=useFeatures,
+                extra_properties=extra
             )
             subdf = pd.DataFrame(outDict)
             allProps.append(subdf)
@@ -72,19 +78,29 @@ class RegionPropertiesWorkflow(WorkflowDir):
         if returnDf:
             return propsDf
 
-    def runWorkflow(self, parent: NestedWorkflow):
+    @fns.dynamicDocstring(availableFeats=propNames)
+    def runWorkflow(
+        self,
+        parent: NestedWorkflow,
+        useFeatures: list[str]=None
+    ):
         """
-        Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
-        will show the order in which all processes should be run
+        Creates a table of ``skimage.regionprops`` where each row corresponds to items from annotation vertices
+        :param parent: NestedWorkflow containing FormattedInputWorkflow
+        :param useFeatures: If given, only these features will be extracted from annotation masks. Can be a list
+          with any of the following items (defaults to all if not provided) -- {availableFeats}
         """
+        if useFeatures is None:
+            useFeatures = propNames
+        generated = {f.stem for f in self.regionpropFeaturesDir.glob('*.*')}
+        newFiles = fns.naturalSorted(f for f in parent.get(FormattedInputWorkflow).formattedFiles if f.stem not in generated)
         fns.mproc_apply(
             self.textAnnToRegionpropsCsv,
-            fns.naturalSorted(parent.get(FormattedInputWorkflow).formattedFiles),
-            returnDf=False,
+            newFiles,
+            useFeatures=useFeatures,
             descr='Forming Region Properties',
             debug=constants.DEBUG
         )
-        # Concat after to avoid multiproc bandwidth
         df = fns.readDataFrameFiles(self.regionpropFeaturesDir, pd.read_csv)
         df.to_csv(self.regionpropFeaturesFile, index=False)
         return df

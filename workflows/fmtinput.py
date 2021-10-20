@@ -18,6 +18,8 @@ class FormattedInputWorkflow(WorkflowDir):
     """
     Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
     by image to allow multiprocessing on subsections of components
+    :param annotationPath: Can either be a file or folder path. These are the annotations that will be processed
+      during the workflow.
     """
     if annotationPath is None:
       return pd.DataFrame()

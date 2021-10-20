@@ -191,10 +191,15 @@ def argparseHelpAction(nested: NestedWorkflow):
         def __call__(self, parser, *args, **kwargs) -> None:
             state = {}
             for stage in nested.stages_flattened:
-                substate = stage.saveState(includeDefaults=True)
-                if isinstance(substate, dict):
-                    state.update(next(iter(substate.values())))
-            newCli = fns.makeCli(nested.__init__, convertArgs=False, **state)
+                pgDict = fns.funcToParamDict(stage.func)
+                for child in pgDict['children']:
+                    state[child['name']] = child
+            newCli = fns.makeCli(
+                nested.__init__,
+                convertArgs=False,
+                parserKwargs=dict(formatter_class=argparse.ArgumentDefaultsHelpFormatter),
+                **state
+            )
             newCli.print_help()
             parser.exit()
     return NestedWorkflowHelp

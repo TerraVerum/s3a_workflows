@@ -17,7 +17,9 @@ __all__  = [
     'TrainValidateTestSplitWorkflow',
     'LinkNetTrainingWorkflow',
     'WorkflowDir',
-    'NestedWorkflow'
+    'NestedWorkflow',
+    'allWorkflows',
+    'Workflow_T'
 ]
 
 Workflow_T = (WorkflowDir, NestedWorkflow)

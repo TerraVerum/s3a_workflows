@@ -73,7 +73,7 @@ class ComponentImagesWorkflow(WorkflowDir):
     fullLabelMasksDir = RegisteredPath()
     compImgsFile = RegisteredPath('.pkl')
 
-    labelField: PrjParam | str
+    labelField: PrjParam | str = None
 
     def __init__(
       self,

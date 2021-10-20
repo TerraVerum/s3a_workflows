@@ -30,10 +30,17 @@ class PngExportWorkflow(WorkflowDir):
         super().__init__(*args, **kwargs)
         self.compositor = widgets.MaskCompositor()
 
-    def runWorkflow(self, parent: NestedWorkflow, createOverlays=False):
+    def runWorkflow(
+        self,
+        parent: NestedWorkflow,
+        createOverlays=False
+    ):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.
+        :param parent: parent NestedWorkflow containing ComponentImagesWorkflow
+        :param createOverlays: If *True*, ``overlaysDir`` will be populated with every mask superimposed over
+          its corresponding image. This can be helpful for visualization, but quite time consuming.
         """
         compImgsWf = parent.get(ComponentImagesWorkflow)
         files = np.array(list(compImgsWf.compImgsDir.glob('*.*')))

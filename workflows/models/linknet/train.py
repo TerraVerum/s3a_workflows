@@ -64,6 +64,15 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         epochs=1000,
         numPredictionsDuringTrain=0
     ):
+        """
+        Trains a LinkNet model
+        :param parent: NestedWorkflow with TrainValidateTestSplitWorkflow
+        :param learningRate: Adam learning rate during training
+        :param batchSize: train batch size
+        :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
+        :param numPredictionsDuringTrain: Nothing happens if <= 0. Otherwise, at the end of each epoch, prediction
+          images will be generated on this many samples of the holdout set for visualization purposes
+        """
         # Find out how many digits are needed to store the epoch number
         epochFormatter = len(str(epochs))
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
@@ -117,9 +126,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             write_graph=True,
             write_images=True,
         )
-        modelCPFormat = f'{{epoch:0{epochFormatter}d}}.h5'
+        modelCPFormat = f'{{epoch:0{epochFormatter}d}}'
         linknetModelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpointsDir / modelCPFormat,
+            filepath=self.checkpointsDir / (modelCPFormat + '.h5'),
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
@@ -138,8 +147,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 replace=False
             )
             def predictAfterEpoch(epoch, logs):
-                outDir = self.predictionsDir/f'{epoch:02d}'
-                self.savePredictions(linknetModel, testFiles, numOutputClasses, outDir)
+                outDir = self.predictionsDir/modelCPFormat.format(epoch=epoch)
+                self.savePredictions(linknetModel, testFiles, outDir)
                 labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class')['label']
                 PEW(outDir).createOverlays(labels=labels)
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
@@ -159,7 +168,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         # Only need to save final if there was no intermediate saving
         if numPredictionsDuringTrain <= 0:
             testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
-            self.savePredictions(linknetModel, testFiles, numClasses=numOutputClasses)
+            self.savePredictions(linknetModel, testFiles)
         export_training_data(self.graphsDir, self.name)
 
     def savePredictions(self, model, testImagePaths, outputDir=None):
