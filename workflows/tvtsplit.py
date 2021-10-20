@@ -156,7 +156,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def _resolveLabelMap(self, labelMap: pd.DataFrame | str=None):
         if labelMap is None:
-            warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
+            # warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
             labelMap = self.input['parent'].get(ComponentImagesWorkflow).allLabelsFile
         if not isinstance(labelMap, (pd.Series, pd.DataFrame)):
             labelMap = pd.read_csv(labelMap, index_col='numeric_label')
