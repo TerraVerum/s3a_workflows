@@ -14,15 +14,15 @@ pg.mkQApp()
 from utilitys import fns
 
 def main_rgbFeatures512(**kwargs):
-    kwargs = {
+    kwargs: dict = {
         'resizeOpts': DEFAULT_RESIZE_OPTS,
         **SMD_INIT_OPTS,
         **kwargs,
     }
-    outputFolder = kwargs['outputFolder'] = Path(kwargs.pop('outputFolder', None) or Path.home()/'Desktop/rgb_features_512')
-    kwargs['labelMapFile'] = kwargs.get('labelMapFile') or outputFolder/'aliased_labels.csv'
+    folder = kwargs['folder'] = Path(kwargs.pop('folder', None) or Path.home()/'Desktop/rgb_features_512')
+    kwargs['labelMapFile'] = kwargs.get('labelMapFile') or folder/'aliased_labels.csv'
     init, run = MainWorkflow.splitInitAndRunKwargs(kwargs)
-    mwf = MainWorkflow(outputFolder, **init)
+    mwf = MainWorkflow(folder, **init)
     return mwf.run(**run)
 
 def main_cli():

@@ -90,19 +90,19 @@ class MainWorkflow(NestedWorkflow):
         return ret
 
     @classmethod
-    def runFromConfig(cls, config: dict|FilePath=None, outputFolder=None, **kwargs):
+    def runFromConfig(cls, config: dict|FilePath=None, folder=None, **kwargs):
         """
         Runs a workflow based on a configuration that likely came from a previous run's call to `saveState`.
         If no output folder is specified, it will be set to the parent folder of the config file.
         Note that if `config` is a dict instead of a file, the output folder must be specified.
         """
-        if config is None and outputFolder is None:
-            raise ValueError('"config" and "outputFolder" cannot both be *None*')
+        if config is None and folder is None:
+            raise ValueError('"config" and "folder" cannot both be *None*')
         if config is None:
             config = []
         if isinstance(config, FilePath.__args__):
-            if outputFolder is None:
-                outputFolder = Path(config).parent
+            if folder is None:
+                folder = Path(config).parent
             config = fns.attemptFileLoad(config)
         if cls.name in config:
             # Pop the top level if given
@@ -123,7 +123,7 @@ class MainWorkflow(NestedWorkflow):
         kwargs.setdefault('stages', useNames)
         init, run = MainWorkflow.splitInitAndRunKwargs(kwargs)
 
-        mwf = MainWorkflow(outputFolder, **init)
+        mwf = MainWorkflow(folder, **init)
         mwf.updateInput(**useConfig, graceful=True)
         state = mwf.saveStringifiedConfig(**init)
         mwf.run(**run)
