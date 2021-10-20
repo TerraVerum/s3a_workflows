@@ -1,3 +1,4 @@
+import numpy as np
 from autobom.constants import TEMPLATES_DIR
 from s3a.constants import PRJ_ENUMS
 
@@ -13,3 +14,5 @@ DEFAULT_RESIZE_OPTS = dict(
 
 # Determines whether multiprocessing uses multiple cores or is disabled
 DEBUG = True
+
+RNG = np.random.default_rng()

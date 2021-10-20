@@ -193,17 +193,19 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def _addTrainValTestInfo(self, summaryDf, fullSummaryDf):
         testOnUnused = self.input.get('testOnUnused')
+        unaugmented = lambda df: df[~df['imageFile'].str.contains('augmented')]
         # Just to silence intellisense; unused will be set below
         unused = None
         if testOnUnused:
             # Don't dip into training data, instead use unclassified data from the full summary
-            unused = fullSummaryDf.loc[fullSummaryDf.index.difference(summaryDf.index)]
+            unused = unaugmented(fullSummaryDf.loc[fullSummaryDf.index.difference(summaryDf.index)])
             if not len(unused):
                 # There is no unused data, so just use the training data as normal
                 testOnUnused = False
         # Check once more for training on unused since it may have changed
         if testOnUnused:
-            testComps = unused.sample(frac=self.input['testPct'])
+            numSamps = min(len(unused), int(len(summaryDf)*self.input['testPct']))
+            testComps = unused.sample(n=numSamps)
             maxTest = self.input['maxTestSamps']
             if maxTest and len(testComps) > maxTest:
                 testComps = testComps.sample(n=maxTest)
@@ -211,7 +213,9 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             summaryDf = summaryDf.append(testComps)
             testIds = testComps.index
         else:
-            trainTemp, testIds = train_test_split(summaryDf.index.to_numpy(), test_size=self.input['testPct'])
+            nonAugmentedIds = unaugmented(summaryDf).index.to_numpy()
+            _, testIds = train_test_split(nonAugmentedIds, test_size=self.input['testPct'])
+            trainTemp = np.setdiff1d(summaryDf.index, testIds)
         _, valIds = train_test_split(trainTemp, test_size=self.input['valPct'])
         # By default, those which aren't test or validate will be training
         summaryDf['dataType'] = self.TRAIN_NAME

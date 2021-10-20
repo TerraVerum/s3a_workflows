@@ -1,4 +1,5 @@
 from .compimgs import ComponentImagesWorkflow
+from .fmtinput import FormattedInputWorkflow
 from .models.linknet import LinkNetTrainingWorkflow
 from .png import PngExportWorkflow
 from .regionpropfeats import RegionPropertiesWorkflow
@@ -9,6 +10,7 @@ from .utils import WorkflowDir, NestedWorkflow
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
 __all__  = [
+    'FormattedInputWorkflow',
     'ComponentImagesWorkflow',
     'RegionPropertiesWorkflow',
     'PngExportWorkflow',

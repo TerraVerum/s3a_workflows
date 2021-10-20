@@ -9,7 +9,7 @@ from s3a.parameditors.table import TableData
 from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
 
-from . import constants
+from . import constants, FormattedInputWorkflow
 from .compimgs import ComponentImagesWorkflow
 from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
 
@@ -77,10 +77,9 @@ class RegionPropertiesWorkflow(WorkflowDir):
         Top-level function. Takes either a csv file or folder of csvs and produces the final result. So, this method
         will show the order in which all processes should be run
         """
-        compImgsWf = parent.get(ComponentImagesWorkflow)
         fns.mproc_apply(
             self.textAnnToRegionpropsCsv,
-            fns.naturalSorted(compImgsWf.formattedInputPath.glob('*.csv')),
+            fns.naturalSorted(parent.get(FormattedInputWorkflow).formattedFiles),
             returnDf=False,
             descr='Forming Region Properties',
             debug=constants.DEBUG

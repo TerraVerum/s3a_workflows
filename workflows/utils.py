@@ -128,7 +128,8 @@ class NestedWorkflow(NestedProcess):
         folder: FilePath,
         name: str = None,
         createDirs=False,
-        reset=False
+        reset=False,
+        numberStages=False
     ):
         super().__init__(name)
         self.workflowDir = Path(folder)
@@ -138,6 +139,7 @@ class NestedWorkflow(NestedProcess):
         if createDirs:
             self.workflowDir.mkdir(exist_ok=True)
             self.createDirs()
+        self.numberStages = numberStages
 
     def run(self, io: ProcessIO = None, disable=False, **runKwargs):
         runKwargs.update(parent=self)
@@ -146,7 +148,10 @@ class NestedWorkflow(NestedProcess):
     def addFunction(self, workflowClass: t.Type[T], **kwargs) -> T:
         basePath = self.workflowDir
         baseName = workflowClass.name or workflowClass.__name__
-        kwargs.setdefault('name', f'{self.stageCounter}. {fns.pascalCaseToTitle(baseName.replace("Workflow", ""))}')
+        defaultName = fns.pascalCaseToTitle(baseName.replace("Workflow", ""))
+        if self.numberStages:
+            defaultName = f'{self.stageCounter}. {defaultName}'
+        kwargs.setdefault('name', defaultName)
         kwargs.setdefault('interactive', False)
         folder = basePath / kwargs['name']
         wf = workflowClass(folder, **kwargs)
@@ -163,7 +168,8 @@ class NestedWorkflow(NestedProcess):
 
     def resetRegisteredPaths(self):
         for wf in self.stages:
-            wf.resetRegisteredPaths()
+            if not wf.disabled:
+                wf.resetRegisteredPaths()
 
     def createDirs(self, excludeExprs=('.',)):
         for wf in self.stages:
