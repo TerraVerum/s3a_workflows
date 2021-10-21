@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import functools
 import typing as t
+import warnings
 from pathlib import Path
 
 import cv2 as cv
@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, XYVertices, TableData
-
 from s3a.generalutils import pd_iterdict
 from utilitys import fns, PrjParam
 from utilitys.typeoverloads import FilePath
@@ -18,7 +17,6 @@ from . import constants
 from .constants import RNG
 from .fmtinput import FormattedInputWorkflow
 from .utils import WorkflowDir, RegisteredPath
-
 
 class ComponentGenerator:
     def __init__(
@@ -96,18 +94,20 @@ class ComponentImagesWorkflow(WorkflowDir):
         return pd.read_pickle(file, compression='zip')
 
 
-    @functools.lru_cache()
     def createGetLabelMapping(self):
         """
         Creates a complete list of all labels from the cleaned input
         """
-        # Use an lru cache instead of checking for file
-
-        # Passing dataframes over multiprocessing is slower than re-reading a new file's dataframe each iteration.
-        # So, just don't use this dataframe for anything other than getting unique labels
-        labelsSer = pd.concat([pd.read_csv(f, dtype=str, na_filter=False)[str(self.labelField)]
-                               for f in self.input['parent'].get(FormattedInputWorkflow).formattedFiles]
-                              )
+        if self.allLabelsFile.exists():
+            return pd.read_csv(self.allLabelsFile, index_col='numeric_label', na_filter=False)
+        imagesPath = Path(self.input['imagesPath'])
+        labelsSer = pd.concat(
+            [
+                pd.read_csv(f, dtype=str, na_filter=False)[str(self.labelField)]
+                for f in self.input['parent'].get(FormattedInputWorkflow).formattedFiles
+                if len(list(imagesPath.glob(f.stem + '*')))
+            ]
+        )
         limitsCounts = labelsSer.value_counts()
 
         infoDf = pd.DataFrame(np.c_[limitsCounts.index, limitsCounts.values], columns=['label', 'count'])
@@ -121,13 +121,16 @@ class ComponentImagesWorkflow(WorkflowDir):
         Turns a csv annotation of a single image into a dataframe of cropped components from that image
         """
         srcDir = Path(srcDir)
-        name = file.stem
         csvDf = self.io.importCsv(file)
         mapping = self.createGetLabelMapping()
         csvDf.columns[csvDf.columns.get_loc(self.labelField)].opts['limits'] = mapping.to_list()
         if resizeOpts is None or 'shape' not in resizeOpts:
             raise ValueError('Must pass at least a dictionary with `shape` info when creating component image exports')
-        imageFile = list(srcDir.glob(file.stem + '*'))[0]
+        imageFiles = list(srcDir.glob(file.stem + '*'))
+        if not len(imageFiles):
+            warnings.warn(f'No image for {file.name}, no export will be formed', UserWarning, stacklevel=2)
+            return
+        imageFile = imageFiles[0]
         stats = Image.open(imageFile)
         labelMask, numericMapping = self.io.exportLblPng(
             csvDf,
@@ -280,7 +283,9 @@ class ComponentImagesWorkflow(WorkflowDir):
 
         generated = {f.stem for f in self.compImgsDir.glob('*.*')}
         newFiles = fns.naturalSorted(f for f in files if f.stem not in generated)
-
+        if newFiles:
+            # Force label file to be recreated
+            self.allLabelsFile.unlink(missing_ok=True)
         self.createMultipleCompImgs(imagesPath, newFiles)
 
         if tryMergingComps:
