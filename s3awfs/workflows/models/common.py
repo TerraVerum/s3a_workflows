@@ -168,8 +168,15 @@ def dataGenerator(**kwargs):
     gen = DataGenIterator(**kwargs)
     imageSig = tf.TensorSpec(shape=gen.imageShape)
     maskSig = tf.TensorSpec(shape=gen.maskShape)
-    dataset = tf.data.Dataset.from_generator(gen, output_signature=(imageSig, maskSig))
-    dataset.cardinality()
+    try:
+        dataset = tf.data.Dataset.from_generator(gen, output_signature=(imageSig, maskSig))
+    except TypeError:
+        # Older version of tensorflow doesn't support output_signature
+        dataset = tf.data.Dataset.from_generator(
+            gen,
+            output_types=(imageSig.dtype, maskSig.dtype),
+            output_shapes=(imageSig.shape, maskSig.shape)
+        )
     return dataset
 
 RNG_SEED = 42
