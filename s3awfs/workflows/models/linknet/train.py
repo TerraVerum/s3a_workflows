@@ -21,9 +21,8 @@ from utilitys.typeoverloads import FilePath
 from .arch import LinkNet
 from ..common import DataGenerator, export_training_data
 from ...png import PngExportWorkflow
-from ...tvtsplit import LabelMaskResolverWorkflow, TrainValidateTestSplitWorkflow
-from ...utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
-
+from ...tvtsplit import TrainValidateTestSplitWorkflow
+from ...utils import WorkflowDir, RegisteredPath, NestedWorkflow
 
 def tversky_index(Y_true, Y_predicted, alpha = 0.7):
     Y_true = K.cast(Y_true, K.floatx())
@@ -62,7 +61,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         learningRate=0.001,
         batchSize=8,
         epochs=1000,
-        numPredictionsDuringTrain=0
+        numPredictionsDuringTrain=0,
+        startEpoch=0
     ):
         """
         Trains a LinkNet model
@@ -72,9 +72,20 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
         :param numPredictionsDuringTrain: At the end of each epoch, prediction images will be generated on
           this many samples of the holdout set for visualization purposes. If 0 or less, nothing happens.
+        :param startEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
+          resume at startEpoch+1. Should match the integer representation of the checkpoint model name
         """
         # Find out how many digits are needed to store the epoch number
-        epochFormatter = len(str(epochs))
+        numEpochDigits = len(str(epochs))
+        # Give a formatter that takes into account the starting epoch to avoid overwrites
+        class OffsetEpochFormatter(str):
+            def format(self, **kwargs):
+                if 'epoch' in kwargs:
+                    # False positive
+                    # noinspection PyTypeChecker
+                    kwargs['epoch'] = kwargs['epoch'] + startEpoch
+                return super().format(**kwargs)
+        epochFormatter = OffsetEpochFormatter(f'{{epoch:0{numEpochDigits}d}}')
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
@@ -119,6 +130,10 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             metrics = ["accuracy", meanIou, dice_coefficient]
             linknetModel = LinkNet(height, width, numOutputClasses).get_model()
             linknetModel.compile(optimizer=optimizer, loss=loss, metrics=metrics)
+            if startEpoch >= 0:
+                # Offset will be applied by formatter, so set to 0 here
+                weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=0) + '.h5')
+                linknetModel.load_weights(weights)
 
         linknetTensorboard = TensorBoard(
             log_dir=self.graphsDir,
@@ -126,9 +141,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             write_graph=True,
             write_images=True,
         )
-        modelCPFormat = f'{{epoch:0{epochFormatter}d}}'
+        # Allow save directory to have an epoch offset
         linknetModelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpointsDir / (modelCPFormat + '.h5'),
+            filepath=OffsetEpochFormatter(self.checkpointsDir / (epochFormatter + '.h5')),
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
@@ -146,10 +161,12 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 numPredictionsDuringTrain,
                 replace=False
             )
+            labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', na_filter=False)['label']
             def predictAfterEpoch(epoch, logs):
-                outDir = self.predictionsDir/modelCPFormat.format(epoch=epoch)
+                # Add 1 to match naming scheme of ModelCheckpoint
+                epoch += 1
+                outDir = self.predictionsDir/epochFormatter.format(epoch=epoch)
                 self.savePredictions(linknetModel, testFiles, outDir)
-                labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class')['label']
                 PEW(outDir).createOverlays(labels=labels)
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
@@ -186,7 +203,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         if 'parent' in self.input:
             tvtWf = self.input['parent'].get(TrainValidateTestSplitWorkflow)
             pngWf = self.input['parent'].get(PngExportWorkflow)
-            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class')['label']
+            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label']
             if len(labelMap.unique()) <= 2:
                 # No need for a legend if there's only foreground/background
                 legendVisible = pngWf.compositor.legend.isVisible()
