@@ -19,7 +19,7 @@ from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
 from .arch import LinkNet
-from ..common import DataGenerator, export_training_data
+from ..common import export_training_data, dataGenerator
 from ...png import PngExportWorkflow
 from ...tvtsplit import TrainValidateTestSplitWorkflow
 from ...utils import WorkflowDir, RegisteredPath, NestedWorkflow
@@ -105,22 +105,27 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         PEW = PngExportWorkflow
         tvtWf.resolver.setClassInfo(classInfo)
         generators = [
-            DataGenerator(
-                nameList,
-                dir_/PEW.imagesDir,
-                dir_/PEW.labelMasksDir,
-                batchSize,
-                (height, width),
-                tvtWf.resolver.numClasses,
-                shuffle=True,
+            dataGenerator(
+                ownedImageNames=nameList,
+                imagesDir=dir_/PEW.imagesDir,
+                labelMasksDir=dir_/PEW.labelMasksDir,
+                imageShape=(height, width, 3),
+                numOutputClasses=tvtWf.resolver.numClasses,
+                shuffle=True
             )
+                .shuffle(2000, reshuffle_each_iteration=True)
+                .batch(batchSize)
+                .prefetch(10)
             for nameList, dir_ in zip(tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir])
         ]
         trainGenerator, valGenerator, testGenerator = generators
-        trainSteps, valSteps, testSteps = [len(g) for g in generators]
 
-        # Same for all generators
-        numOutputClasses = trainGenerator.numOutputClasses
+        def calcNumBatches(fileList):
+            return int(np.floor(len(fileList) / batchSize))
+
+        trainSteps, valSteps, testSteps = [calcNumBatches(lst) for lst in tvtFiles]
+
+        numOutputClasses = tvtWf.resolver.numClasses
         with (strategy.scope()):
             meanIou = MeanIoU(num_classes=numOutputClasses)
             metrics = ["accuracy", meanIou, dice_coefficient]

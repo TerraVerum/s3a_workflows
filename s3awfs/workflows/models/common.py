@@ -10,7 +10,9 @@ from s3a import generalutils as gutils
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
+import tensorflow as tf
 
+from s3awfs.workflows.constants import RNG
 
 class DataGenerator(Sequence):
     """
@@ -102,6 +104,73 @@ class DataGenerator(Sequence):
             mask = to_categorical(mask, num_classes=num_classes, dtype=np.uint8)
             masks[index, ...] = mask
         return images, masks
+
+oldgen = DataGenerator
+
+class DataGenIterator:
+    def __init__(
+        self,
+        ownedImageNames,
+        imagesDir: Path,
+        labelMasksDir,
+        imageShape,
+        numOutputClasses,
+        shuffle=False
+    ):
+        np.random.seed(22)
+        names = []
+        for fpath in ownedImageNames:
+            if isinstance(fpath, Path):
+                fpath = fpath.name
+            names.append(fpath)
+        self.ownedImageNames = names
+        self.imagesDir = imagesDir
+        self.shuffle = shuffle
+        self.numOutputClasses = numOutputClasses
+        self.imageShape= imageShape
+        self.maskShape = (*imageShape[:2], numOutputClasses)
+        self.labelMasksDir = labelMasksDir
+        if shuffle:
+            RNG.shuffle(self.ownedImageNames)
+
+    def process_path(self, file_path):
+        rets = []
+        for parent, numChannels in zip(
+            [self.imagesDir, self.labelMasksDir],
+            [self.imageShape[-1], 1]
+        ):
+            # Convert the compressed string to a 3D uint8 tensor
+            img = tf.io.read_file(str(parent/file_path))
+            img = tf.io.decode_png(img, channels=numChannels)
+            # Resize the image to the desired size
+            rets.append(tf.image.resize(img, self.imageShape[:2]))
+        # Load the raw data from the file as a string
+        return tuple(rets)
+
+    def __getitem__(self, index):
+        """
+        Gets the batch of data with the specified batch size at a specific index of the data.
+        """
+        name = self.ownedImageNames[index]
+        image, mask = self.process_path(name)
+        return (
+            image,
+            to_categorical(
+                mask,
+                self.numOutputClasses
+            )
+        )
+
+    def __call__(self):
+        yield from iter(self)
+
+def dataGenerator(**kwargs):
+    gen = DataGenIterator(**kwargs)
+    imageSig = tf.TensorSpec(shape=gen.imageShape)
+    maskSig = tf.TensorSpec(shape=gen.maskShape)
+    dataset = tf.data.Dataset.from_generator(gen, output_signature=(imageSig, maskSig))
+    dataset.cardinality()
+    return dataset
 
 RNG_SEED = 42
 
