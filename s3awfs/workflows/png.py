@@ -33,7 +33,8 @@ class PngExportWorkflow(WorkflowDir):
     def runWorkflow(
         self,
         parent: NestedWorkflow,
-        createOverlays=False
+        createOverlays=False,
+        overlayColormap=constants.DEFAULT_RGB_CMAP
     ):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
@@ -41,6 +42,7 @@ class PngExportWorkflow(WorkflowDir):
         :param parent: parent NestedWorkflow containing ComponentImagesWorkflow
         :param createOverlays: If *True*, ``overlaysDir`` will be populated with every mask superimposed over
           its corresponding image. This can be helpful for visualization, but quite time consuming.
+        :param overlayColormap: If ``createOverlays`` is *True*, this is the colormap assigned to mask values
         """
         compImgsWf = parent.get(ComponentImagesWorkflow)
         files = np.array(list(compImgsWf.compImgsDir.glob('*.*')))
@@ -62,7 +64,7 @@ class PngExportWorkflow(WorkflowDir):
 
         self.createMergedSummaries()
         if createOverlays:
-            self.createOverlays()
+            self.createOverlays(colormap=overlayColormap)
 
     def _exportSinglePcbImage(self, compImgsFile):
         outDf = ComponentImagesWorkflow.readDataframe(compImgsFile)
@@ -96,20 +98,23 @@ class PngExportWorkflow(WorkflowDir):
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
 
-    def createOverlays(self, labels: pd.Series=None):
+    def createOverlays(self, labels: pd.Series=None, colormap=constants.DEFAULT_RGB_CMAP):
         """
         Overlays masks on top of images and saves to a new directory
         :param labels: Mapping of numeric mask value to its string label
+        :param colormap: Colormap used for mask values
         """
         if labels is None:
             summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
             labels = summaries['label'].drop_duplicates()
             labels[labels.str.len() == 0] = '<blank>'
-
+        oldProps = dict(self.compositor.propertiesProc.input)
+        self.compositor.setOverlayProperties(colormap=colormap)
         for img in self.imagesDir.glob('*.png'):
             mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
             outputFile = self.overlaysDir / img.with_suffix('.jpg').name
             self.overlayMaskOnImage(img, mask, labels, outputFile)
+        self.compositor.setOverlayProperties(**oldProps)
 
     def overlayMaskOnImage(self, image, mask, labelMap=None, outputFile=None):
         compositor = self.compositor

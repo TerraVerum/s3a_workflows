@@ -15,4 +15,6 @@ DEFAULT_RESIZE_OPTS = dict(
 # Determines whether multiprocessing uses multiple cores or is disabled
 DEBUG = True
 
+DEFAULT_RGB_CMAP = 'magma'
+
 RNG = np.random.default_rng()

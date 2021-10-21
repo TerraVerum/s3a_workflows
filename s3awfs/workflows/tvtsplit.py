@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyqtgraph as pg
 from sklearn.model_selection import train_test_split
 from utilitys import fns
 
@@ -17,6 +18,7 @@ from . import constants, ComponentImagesWorkflow
 from .png import PngExportWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
 
+_defaultMaskColors = (None, 'binary', constants.DEFAULT_RGB_CMAP)
 
 class LabelMaskResolverWorkflow(WorkflowDir):
     """
@@ -31,6 +33,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         labelMaskFiles: t.List[Path | np.ndarray],
         resolver: AliasedMaskResolver,
         outputNames: t.Sequence[str] = None,
+        maskColors=_defaultMaskColors,
         treatAsCache=False
     ):
         if outputNames is None:
@@ -44,14 +47,22 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             membership = np.isin(outputNames, np.array(list(newFiles)))
             labelMaskFiles = np.array(labelMaskFiles, dtype=object)[membership]
             outputNames = outputNames[membership]
+        cmapDirMapping = {
+            None: self.labelMasksDir,
+            'binary': self.binaryMasksDir,
+            'viridis': self.rgbMasksDir
+        }
 
         for mask, filename in zip(labelMaskFiles, outputNames):
             mask = resolver.getMaybeResolve(mask)
             # Fetch out here to avoid fetching inside loop
-            for cmap, dir_ in zip(
-                [None, 'binary', 'viridis'],
-                [self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir]
-            ):
+            for cmap in {*maskColors, None}:
+                if cmap in cmapDirMapping:
+                    dir_ = cmapDirMapping[cmap]
+                elif cmap in pg.colormap.listMaps():
+                    dir_ = self.rgbMasksDir
+                else:
+                    continue
                 resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
 
     @staticmethod
@@ -87,7 +98,8 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         testPct=0.15,
         replace=False,
         testOnUnused=True,
-        maxTestSamps=None
+        maxTestSamps=None,
+        maskColors=_defaultMaskColors
     ):
         """
         From a set of label and image files, forms train, validate, and test subsets.
@@ -105,6 +117,9 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         :param testOnUnused: If *True*, holdout data can originate from data that was discarded either through class
           exclusion or class balancing.
         :param maxTestSamps: Max number of holdout samples. If *None*, no limit is enforced.
+        :param maskColors: Mask types to generate. *None* is the default label mask (strongly recommended),
+          "binary" is for a black-white human-visible export, and any recognizable color ("viridis", "magma",
+          etc.) will make an rgb-colored mask.
         """
         labelMap = self._resolveLabelMap(labelMap)
         exportWf = parent.get(PngExportWorkflow)
@@ -146,6 +161,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
                 lambda el: exportWf.labelMasksDir / el
             ),
             self.resolver,
+            maskColors=self.input['maskColors'],
             treatAsCache=True
         )
 
