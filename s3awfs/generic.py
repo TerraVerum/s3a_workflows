@@ -7,9 +7,9 @@ from pathlib import Path
 from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
-import workflows.constants
-from workflows import NestedWorkflow, Workflow_T, allWorkflows, WorkflowDir
-from workflows.utils import stringifyDict
+from s3awfs.workflows import constants
+from s3awfs.workflows import NestedWorkflow, Workflow_T, allWorkflows, WorkflowDir
+from s3awfs.workflows.utils import stringifyDict
 
 _allWorkflows = allWorkflows()
 
@@ -41,7 +41,7 @@ class MainWorkflow(NestedWorkflow):
         super().__init__(folder, name=name)
 
         if multiprocess:
-            workflows.constants.DEBUG = False
+            constants.DEBUG = False
 
         defaultClasses = allWorkflows()
         useClasses = self.resolvePartialWorkflowNames(stages)

@@ -1,0 +1,4 @@
+s3a>=0.5.2
+utilitys>=0.4.4
+scikit-learn
+opencv-python-headless

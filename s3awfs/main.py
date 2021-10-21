@@ -7,10 +7,10 @@ import sys
 import pyqtgraph as pg
 pg.mkQApp()
 
-from generic import MainWorkflow
-from workflows import allWorkflows
-from workflows.constants import DEFAULT_RESIZE_OPTS, SMD_INIT_OPTS
-from workflows.utils import argparseHelpAction
+from s3awfs.generic import MainWorkflow
+from s3awfs.workflows import allWorkflows
+from s3awfs.workflows.constants import DEFAULT_RESIZE_OPTS, SMD_INIT_OPTS
+from s3awfs.workflows.utils import argparseHelpAction
 
 
 from utilitys import fns
