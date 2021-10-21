@@ -91,7 +91,10 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         # Give a formatter that takes into account the starting epoch to avoid overwrites
         epochFormatter = f'{{epoch:0{numEpochDigits}d}}'
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
-        strategy = tf.distribute.MirroredStrategy(computeDevices)
+        if workers > 1:
+            strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        else:
+            strategy = tf.distribute.MirroredStrategy(computeDevices)
         tvtWf = parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
