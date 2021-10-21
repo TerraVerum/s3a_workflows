@@ -62,7 +62,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         batchSize=8,
         epochs=1000,
         numPredictionsDuringTrain=0,
-        startEpoch=0,
+        initialEpoch=0,
         workers=1
     ):
         """
@@ -73,7 +73,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
         :param numPredictionsDuringTrain: At the end of each epoch, prediction images will be generated on
           this many samples of the holdout set for visualization purposes. If 0 or less, nothing happens.
-        :param startEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
+        :param initialEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
           resume at startEpoch+1. Should match the integer representation of the checkpoint model name
         :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
           multiprocessing with ``workers`` number of cores.
@@ -81,14 +81,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
         # Give a formatter that takes into account the starting epoch to avoid overwrites
-        class OffsetEpochFormatter(str):
-            def format(self, **kwargs):
-                if 'epoch' in kwargs:
-                    # False positive
-                    # noinspection PyTypeChecker
-                    kwargs['epoch'] = kwargs['epoch'] + startEpoch
-                return super().format(**kwargs)
-        epochFormatter = OffsetEpochFormatter(f'{{epoch:0{numEpochDigits}d}}')
+        epochFormatter = f'{{epoch:0{numEpochDigits}d}}'
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
         devices = ["/gpu:0"]
         strategy = tf.distribute.MirroredStrategy(devices)
@@ -133,9 +126,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             metrics = ["accuracy", meanIou, dice_coefficient]
             linknetModel = LinkNet(height, width, numOutputClasses).get_model()
             linknetModel.compile(optimizer=optimizer, loss=loss, metrics=metrics)
-            if startEpoch >= 0:
-                # Offset will be applied by formatter, so set to 0 here
-                weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=0) + '.h5')
+            if initialEpoch > 0:
+                weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=initialEpoch) + '.h5')
                 linknetModel.load_weights(weights)
 
         linknetTensorboard = TensorBoard(
@@ -146,7 +138,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         )
         # Allow save directory to have an epoch offset
         linknetModelcheckpoint = ModelCheckpoint(
-            filepath=OffsetEpochFormatter(self.checkpointsDir / (epochFormatter + '.h5')),
+            filepath=self.checkpointsDir / (epochFormatter + '.h5'),
             verbose=0,
             save_weights_only=True,
             save_freq="epoch",
@@ -184,6 +176,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             validation_data=valGenerator,
             validation_steps=valSteps,
             callbacks=linknetCallbacks,
+            initial_epoch=initialEpoch,
             **moreKwargs
         )
 
