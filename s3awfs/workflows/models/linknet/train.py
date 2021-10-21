@@ -66,7 +66,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         initialEpoch=0,
         workers=1,
         bufferSize=1000,
-        tensorboardUpdatesPerEpoch=5
+        tensorboardUpdatesPerEpoch=5,
+        computeDevices=("/cpu:0",)
     ):
         """
         Trains a LinkNet model
@@ -83,14 +84,14 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param bufferSize: How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this size
           Only used if workers > 1
         :param tensorboardUpdatesPerEpoch: Number of times per training epoch tensorboard should update
+        :param computeDevices: Devices linknet should attempt to use while training
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
         # Give a formatter that takes into account the starting epoch to avoid overwrites
         epochFormatter = f'{{epoch:0{numEpochDigits}d}}'
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
-        devices = ["/gpu:0"]
-        strategy = tf.distribute.MirroredStrategy(devices)
+        strategy = tf.distribute.MirroredStrategy(computeDevices)
         tvtWf = parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
