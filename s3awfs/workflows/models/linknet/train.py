@@ -63,7 +63,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         epochs=1000,
         numPredictionsDuringTrain=0,
         initialEpoch=0,
-        workers=1
+        workers=1,
+        bufferSize=1000
     ):
         """
         Trains a LinkNet model
@@ -77,6 +78,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
           resume at startEpoch+1. Should match the integer representation of the checkpoint model name
         :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
           multiprocessing with ``workers`` number of cores.
+        :param bufferSize: How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this size
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
@@ -104,6 +106,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         PEW = PngExportWorkflow
         tvtWf.resolver.setClassInfo(classInfo)
+        batchKwargs = {}
+        if workers > 1 and tf.__version__ > '2.5':
+            batchKwargs['num_parallel_calls'] = workers
         generators = [
             dataGenerator(
                 ownedImageNames=nameList,
@@ -113,9 +118,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 numOutputClasses=tvtWf.resolver.numClasses,
                 shuffle=True
             )
-                .shuffle(2000, reshuffle_each_iteration=True)
-                .batch(batchSize)
-                .prefetch(10)
+                .shuffle(bufferSize, reshuffle_each_iteration=True)
+                .batch(batchSize, **batchKwargs)
+                .prefetch(max(1, bufferSize//10))
             for nameList, dir_ in zip(tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir])
         ]
         trainGenerator, valGenerator, testGenerator = generators
