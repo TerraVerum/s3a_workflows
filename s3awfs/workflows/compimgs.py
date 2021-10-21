@@ -24,7 +24,6 @@ class ComponentGenerator:
     def __init__(
       self,
       tableData=None,
-      rotationPct=0.4
 
     ):
         self.tableData = tableData or TableData()
@@ -49,7 +48,7 @@ class ComponentGenerator:
         if rotations is None:
             rotations = np.zeros(numRows)
             changeIdxs = RNG.choice(numRows, int(numRows * rotationPct), replace=False)
-            rotations[changeIdxs] = RNG.normal(0, 90, len(changeIdxs))
+            rotations[changeIdxs] = RNG.normal(0, 2, len(changeIdxs))
         outBoxes = []
         for size, center, rot in zip(sizes, centers, rotations):
             points = cv.boxPoints((center, size, rot))
