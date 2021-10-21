@@ -194,7 +194,9 @@ class ComponentImagesWorkflow(WorkflowDir):
         # Ensure everything requested is present
         assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
-        exported.to_pickle((self.compImgsDir / name).with_suffix('.pkl'), compression='zip')
+        outputName = (self.compImgsDir / name).with_suffix('.pkl')
+        compressionOptions = {"method": "zip", "archive_name": outputName.name}
+        exported.to_pickle(outputName, compression=compressionOptions)
         return exported
 
     def maybeReorientCompImgs(
@@ -241,7 +243,8 @@ class ComponentImagesWorkflow(WorkflowDir):
             subdf = self.readDataframe(file)
             allDfs.append(subdf)
         featsConcat = pd.concat(allDfs, ignore_index=True)
-        featsConcat.to_pickle(self.compImgsFile, compression='zip')
+        compressionOptions = {"method": "zip", "archive_name": self.compImgsFile.name}
+        featsConcat.to_pickle(self.compImgsFile, compression=compressionOptions)
         return featsConcat
 
     def runWorkflow(
