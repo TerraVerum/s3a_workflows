@@ -87,6 +87,15 @@ class ComponentImagesWorkflow(WorkflowDir):
         self.io = ComponentIO()
         self.augmentor = ComponentGenerator()
 
+    @classmethod
+    def readDataframe(cls, file):
+        """
+        Since files don't have a zip extension, the default call to `read_pickle` will fail. This lets other
+        classes become agnostic about adding a "compression" parameter
+        """
+        return pd.read_pickle(file, compression='zip')
+
+
     @functools.lru_cache()
     def createGetLabelMapping(self):
         """
@@ -182,7 +191,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         # Ensure everything requested is present
         assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
-        exported.to_pickle((self.compImgsDir / name).with_suffix('.pkl'))
+        exported.to_pickle((self.compImgsDir / name).with_suffix('.pkl'), compression='zip')
         return exported
 
     def maybeReorientCompImgs(
@@ -226,10 +235,10 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         allDfs = []
         for file in self.compImgsDir.glob('*.pkl'):
-            subdf = pd.read_pickle(file)
+            subdf = self.readDataframe(file)
             allDfs.append(subdf)
         featsConcat = pd.concat(allDfs, ignore_index=True)
-        featsConcat.to_pickle(self.compImgsFile)
+        featsConcat.to_pickle(self.compImgsFile, compression='zip')
         return featsConcat
 
     def runWorkflow(

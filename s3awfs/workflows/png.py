@@ -65,7 +65,7 @@ class PngExportWorkflow(WorkflowDir):
             self.createOverlays()
 
     def _exportSinglePcbImage(self, compImgsFile):
-        outDf = pd.read_pickle(compImgsFile)
+        outDf = ComponentImagesWorkflow.readDataframe(compImgsFile)
         outDf['imageFile'] = compImgsFile.with_suffix('.png').name
 
         exportedImgs = []

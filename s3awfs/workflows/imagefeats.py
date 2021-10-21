@@ -71,7 +71,7 @@ class FeatureTransformerWorkflow(WorkflowDir):
             transformers = [self.transformers[k] for k in transformers]
         compImgsWf = parent.get(ComponentImagesWorkflow)
         def readFunc(file: Path):
-            df_ = pd.read_pickle(file)
+            df_ = ComponentImagesWorkflow.readDataframe(file)
             for idx, img in df_['image'].iteritems():
                 if grayscale:
                     img = img.mean(2).astype(img.dtype)
