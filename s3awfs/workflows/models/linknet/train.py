@@ -65,7 +65,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         numPredictionsDuringTrain=0,
         initialEpoch=0,
         workers=1,
-        bufferSize=1000
+        bufferSize=1000,
+        tensorboardUpdatesPerEpoch=5
     ):
         """
         Trains a LinkNet model
@@ -80,6 +81,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
           multiprocessing with ``workers`` number of cores.
         :param bufferSize: How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this size
+          Only used if workers > 1
+        :param tensorboardUpdatesPerEpoch: Number of times per training epoch tensorboard should update
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
@@ -154,11 +157,16 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 shutil.rmtree(item)
             else:
                 item.unlink()
+        if tensorboardUpdatesPerEpoch <= 1:
+            updateFreq = 'epoch'
+        else:
+            updateFreq = calcNumBatches(tvtFiles[0])//tensorboardUpdatesPerEpoch
         linknetTensorboard = TensorBoard(
             log_dir=self.graphsDir,
             histogram_freq=0,
             write_graph=True,
             write_images=True,
+            update_freq=updateFreq
         )
         # Allow save directory to have an epoch offset
         linknetModelcheckpoint = ModelCheckpoint(
@@ -168,10 +176,11 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             save_freq="epoch",
         )
         linknetCallbacks = [
-            linknetTensorboard,
             linknetModelcheckpoint,
             earlyStopping,
         ]
+        if tensorboardUpdatesPerEpoch > 0:
+            linknetCallbacks.append(linknetTensorboard)
 
         if numPredictionsDuringTrain > 0:
             rng = np.random.default_rng(42)
