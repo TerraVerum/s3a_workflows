@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os.path
+import shutil
 import typing as t
 from pathlib import Path
 
@@ -147,6 +148,12 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=initialEpoch) + '.h5')
                 linknetModel.load_weights(weights)
 
+        # Graphs don't play nice with old files
+        for item in self.graphsDir.iterdir():
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
         linknetTensorboard = TensorBoard(
             log_dir=self.graphsDir,
             histogram_freq=0,
