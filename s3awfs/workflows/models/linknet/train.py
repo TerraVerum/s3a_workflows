@@ -62,7 +62,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         batchSize=8,
         epochs=1000,
         numPredictionsDuringTrain=0,
-        startEpoch=0
+        startEpoch=0,
+        workers=1
     ):
         """
         Trains a LinkNet model
@@ -74,6 +75,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
           this many samples of the holdout set for visualization purposes. If 0 or less, nothing happens.
         :param startEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
           resume at startEpoch+1. Should match the integer representation of the checkpoint model name
+        :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
+          multiprocessing with ``workers`` number of cores.
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
@@ -170,6 +173,10 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 PEW(outDir).createOverlays(labels=labels)
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
+        if workers > 1:
+            moreKwargs = dict(use_multiprocessing=True, workers=workers)
+        else:
+            moreKwargs = {}
         linknetModel.fit(
             trainGenerator,
             steps_per_epoch=trainSteps,
@@ -177,6 +184,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             validation_data=valGenerator,
             validation_steps=valSteps,
             callbacks=linknetCallbacks,
+            **moreKwargs
         )
 
         linknetModel.evaluate(testGenerator, steps=testSteps)
