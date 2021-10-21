@@ -14,7 +14,7 @@ import tensorflow as tf
 
 from s3awfs.workflows.constants import RNG
 
-class DataGenerator(Sequence):
+class SequenceDataGenerator(Sequence):
     """
     A class that serves as a custom data generator for the Neural Network pipeline.
     Inputs different file names, reads in image files and masks in batches based on batch size,
@@ -23,24 +23,24 @@ class DataGenerator(Sequence):
 
     def __init__(
         self,
-        owned_image_names: list[Path | str],
-        images_dir: Path,
+        ownedImageNames: list[Path | str],
+        imagesDir: Path,
         labelMasksDir,
-        batch_size,
-        image_shape,
+        imageShape,
         numOutputClasses,
-        shuffle
+        batchSize,
+        shuffle=True
     ):
         """
         :param owned_images: list
             A list of Path object file directories for the specific data type.
-        :param images_dir: Path
+        :param imagesDir: Path
             Images to use as inputs data
         :param labelMasksDir: Path
             Masks to use as ground truth outputs
-        :param batch_size: int
+        :param batchSize: int
             A int of the batch size of the training of the Neural Network.
-        :param image_shape: tuple
+        :param imageShape: tuple
             A size two tuple of the height and width of the image.
         :param numOutputClasses: Number of total classes present
         :param shuffle: bool
@@ -48,16 +48,16 @@ class DataGenerator(Sequence):
         """
         np.random.seed(22)
         names = []
-        for fpath in owned_image_names:
+        for fpath in ownedImageNames:
             if isinstance(fpath, Path):
                 fpath = fpath.name
             names.append(fpath)
-        self.owned_image_names = names
-        self.images_dir = images_dir
-        self.batch_size = batch_size
-        self.image_shape = image_shape
+        self.ownedImageNames = names
+        self.imagesDir = imagesDir
+        self.batchSize = batchSize
+        self.imageShape = imageShape
         self.shuffle = shuffle
-        self.indexes = np.arange(len(self.owned_image_names))
+        self.indexes = np.arange(len(self.ownedImageNames))
         self.numOutputClasses = numOutputClasses
         self.labelMasksDir = labelMasksDir
         self.on_epoch_end()
@@ -66,16 +66,16 @@ class DataGenerator(Sequence):
         """
         Returns the number of batches in an epoch of the data.
         """
-        return int(np.floor(len(self.owned_image_names) / self.batch_size))
+        return int(np.floor(len(self.ownedImageNames) / self.batchSize))
 
     def __getitem__(self, index):
         """
         Gets the batch of data with the specified batch size at a specific index of the data.
         """
-        start = index * self.batch_size
-        end = (index + 1) * self.batch_size
+        start = index * self.batchSize
+        end = (index + 1) * self.batchSize
         indexes = self.indexes[start:end]
-        image_names_temp = [self.owned_image_names[i] for i in indexes]
+        image_names_temp = [self.ownedImageNames[i] for i in indexes]
         X, Y = self.__data_generation(image_names_temp)
         return X, Y
 
@@ -83,7 +83,7 @@ class DataGenerator(Sequence):
         """
         Gets executed at the end of each epoch and recollects all file ids and shuffles the ids if the shuffle parameter is set.
         """
-        self.indexes = np.arange(len(self.owned_image_names))
+        self.indexes = np.arange(len(self.ownedImageNames))
         if self.shuffle:
             np.random.shuffle(self.indexes)
 
@@ -93,10 +93,10 @@ class DataGenerator(Sequence):
         :param image_names: The file ids of the specific batch of data.
         """
         num_classes = self.numOutputClasses
-        images = np.empty((len(image_names), *self.image_shape, 3), dtype=np.uint8)
-        masks = np.empty((len(image_names), *self.image_shape, num_classes), dtype=np.uint8)
+        images = np.empty((len(image_names), *self.imageShape), dtype=np.uint8)
+        masks = np.empty((len(image_names), *self.imageShape[:2], num_classes), dtype=np.uint8)
         for index, img_file in enumerate(image_names):
-            img = gutils.cvImread_rgb(self.images_dir / img_file, cv.IMREAD_UNCHANGED)
+            img = gutils.cvImread_rgb(self.imagesDir / img_file, cv.IMREAD_UNCHANGED)
             mask = gutils.cvImread_rgb(self.labelMasksDir / img_file, cv.IMREAD_UNCHANGED)
             # Uncomment below to turn to single class
             # mask[mask > 0] = 1
@@ -105,7 +105,7 @@ class DataGenerator(Sequence):
             masks[index, ...] = mask
         return images, masks
 
-oldgen = DataGenerator
+oldgen = SequenceDataGenerator
 
 class DataGenIterator:
     def __init__(
@@ -115,7 +115,8 @@ class DataGenIterator:
         labelMasksDir,
         imageShape,
         numOutputClasses,
-        shuffle=False
+        shuffle=True,
+        **_kwargs
     ):
         np.random.seed(22)
         names = []
@@ -164,7 +165,7 @@ class DataGenIterator:
     def __call__(self):
         yield from iter(self)
 
-def dataGenerator(**kwargs):
+def dataGeneratorFromIter(**kwargs):
     gen = DataGenIterator(**kwargs)
     imageSig = tf.TensorSpec(shape=gen.imageShape)
     maskSig = tf.TensorSpec(shape=gen.maskShape)

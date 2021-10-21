@@ -19,7 +19,7 @@ from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
 from .arch import LinkNet
-from ..common import export_training_data, dataGenerator
+from ..common import export_training_data, dataGeneratorFromIter, SequenceDataGenerator
 from ...png import PngExportWorkflow
 from ...tvtsplit import TrainValidateTestSplitWorkflow
 from ...utils import WorkflowDir, RegisteredPath, NestedWorkflow
@@ -109,18 +109,25 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         batchKwargs = {}
         if workers > 1 and tf.__version__ > '2.5':
             batchKwargs['num_parallel_calls'] = workers
+
+        if workers <= 1:
+            constructor = SequenceDataGenerator
+        else:
+            def constructor(**kwargs):
+                return dataGeneratorFromIter(**kwargs) \
+                    .shuffle(bufferSize, reshuffle_each_iteration=True) \
+                    .batch(batchSize, **batchKwargs) \
+                    .prefetch(max(1, bufferSize // 10))
         generators = [
-            dataGenerator(
+            constructor(
                 ownedImageNames=nameList,
                 imagesDir=dir_/PEW.imagesDir,
                 labelMasksDir=dir_/PEW.labelMasksDir,
                 imageShape=(height, width, 3),
                 numOutputClasses=tvtWf.resolver.numClasses,
+                batchSize=batchSize,
                 shuffle=True
             )
-                .shuffle(bufferSize, reshuffle_each_iteration=True)
-                .batch(batchSize, **batchKwargs)
-                .prefetch(max(1, bufferSize//10))
             for nameList, dir_ in zip(tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir])
         ]
         trainGenerator, valGenerator, testGenerator = generators
