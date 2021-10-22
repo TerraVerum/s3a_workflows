@@ -141,10 +141,6 @@ class NestedWorkflow(NestedProcess):
             self.createDirs()
         self.numberStages = numberStages
 
-    def run(self, io: ProcessIO = None, disable=False, **runKwargs):
-        runKwargs.update(parent=self)
-        return super().run(io, disable, **runKwargs)
-
     def addFunction(self, workflowClass: t.Type[T], **kwargs) -> T:
         basePath = self.workflowDir
         baseName = workflowClass.name or workflowClass.__name__
@@ -155,6 +151,7 @@ class NestedWorkflow(NestedProcess):
         kwargs.setdefault('interactive', False)
         folder = basePath / kwargs['name']
         wf = workflowClass(folder, **kwargs)
+        wf.updateInput(parent=self, graceful=True)
         self.stages.append(wf)
         self.stageCounter += 1
         return wf

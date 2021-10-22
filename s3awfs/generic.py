@@ -87,11 +87,28 @@ class MainWorkflow(NestedWorkflow):
         return ret
 
     @classmethod
-    def runFromConfig(cls, config: dict|FilePath=None, folder=None, **kwargs):
+    def fromConfig(
+        cls,
+        config: dict|FilePath=None,
+        folder=None,
+        run=False,
+        overwriteConfig=False,
+        **kwargs
+    ):
         """
-        Runs a workflow based on a configuration that likely came from a previous run's call to `saveState`.
-        If no output folder is specified, it will be set to the parent folder of the config file.
+        Creates a workflow based on a configuration that likely came from a previous run's call to `saveState`.
+
         Note that if `config` is a dict instead of a file, the output folder must be specified.
+        If ``run`` is *True*, the workflow is run with the kwargs before being returned.
+
+        :param config: Nested dict from which to initialize. Can come from ``MainWorkflow.saveStringifiedState``
+        :param folder: Where to set up this workflow. If no output folder is specified, it will be set to the
+          parent folder of the config file.
+        :param run: If *True*, the config will be run after being initialized
+        :param overwriteConfig: If *True*, the config actually consumed by this workflow will be saved over the
+          specified config file. This can be useful to ensure extra kwargs passed in get uploaded to the saved config
+        :param kwargs: Additional kwargs either passed to ``MainWorkflow.__init__`` or ``MainWorkflow.run`` based
+          on their names. See MainWorkflow.splitInitAndRunKwargs
         """
         if config is None and folder is None:
             raise ValueError('"config" and "folder" cannot both be *None*')
@@ -118,14 +135,16 @@ class MainWorkflow(NestedWorkflow):
 
         useNames = [nameFmt(name) for name in useConfig]
         kwargs.setdefault('stages', useNames)
-        init, run = MainWorkflow.splitInitAndRunKwargs(kwargs)
+        initKwargs, runKwargs = cls.splitInitAndRunKwargs(kwargs)
 
-        mwf = MainWorkflow(folder, **init)
+        mwf = cls(folder, **initKwargs)
         mwf.updateInput(**useConfig, graceful=True)
-        state = mwf.saveStringifiedConfig(**init)
-        mwf.run(**run)
+        if overwriteConfig and kwargs:
+            mwf.saveStringifiedConfig(**initKwargs)
+        if run:
+            mwf.run(**runKwargs)
 
-        return state
+        return mwf
 
     def saveStringifiedConfig(self, **initKwargs):
         state = self.saveState(includeDefaults=True)
