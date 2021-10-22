@@ -86,7 +86,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         self.augmentor = ComponentGenerator()
 
     @classmethod
-    def readDataframe(cls, file):
+    def readDataframe(cls, file) -> pd.DataFrame:
         """
         Since files don't have a zip extension, the default call to `read_pickle` will fail. This lets other
         classes become agnostic about adding a "compression" parameter
