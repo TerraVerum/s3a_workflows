@@ -251,7 +251,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             labelMap = None
         compositorProps = pngWf.compositor.propertiesProc
         oldSettings = dict(compositorProps.input)
-        compositorProps.run(opacity=0.7, colormap='viridis')
+        compositorProps.run(opacity=0.7)
         for file in tqdm(testImagePaths, desc=f"Saving Predictions to {outputDir}"):
             img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
@@ -285,11 +285,11 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             self.savePredictions(model, testImagePaths, outputDir)
         return model
 
-    def loadAndTestWeights(self, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, weightsFile=None):
+    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None):
         if numClasses is None and 'parent' in self.input:
             numClasses = len(pd.read_csv(self.input['parent'].get(TrainValidateTestSplitWorkflow).classInfoFile, usecols=['label']))
         model = LinkNet(512, 512, numClasses).get_model()
         model.load_weights(weightsFile)
-        if testImagePaths:
+        if len(testImagePaths):
             self.savePredictions(model, testImagePaths)
         return model
