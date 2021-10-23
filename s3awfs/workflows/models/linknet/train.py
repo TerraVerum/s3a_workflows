@@ -20,7 +20,12 @@ from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
 from .arch import LinkNet
-from ..common import export_training_data, dataGeneratorFromIter, SequenceDataGenerator
+from ..common import (
+    export_training_data,
+    dataGeneratorFromIter,
+    SequenceDataGenerator,
+    SquareMaskSequenceDataGenerator
+)
 from ...png import PngExportWorkflow
 from ...tvtsplit import TrainValidateTestSplitWorkflow
 from ...utils import WorkflowDir, RegisteredPath, NestedWorkflow
@@ -67,7 +72,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         workers=1,
         bufferSize=1000,
         tensorboardUpdatesPerEpoch=5,
-        computeDevices=("/cpu:0",)
+        computeDevices=("/cpu:0",),
+        convertMasksToBbox=False
     ):
         """
         Trains a LinkNet model
@@ -86,6 +92,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
           Only used if workers > 1
         :param tensorboardUpdatesPerEpoch: Number of times per training epoch tensorboard should update
         :param computeDevices: Devices linknet should attempt to use while training
+        :param convertMasksToBbox: If *True*, semantic masks will be converted into bboxes before training.
+          This is only useful to experiment with the effect of using bboxes on training accuracy
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
@@ -115,12 +123,16 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         PEW = PngExportWorkflow
         tvtWf.resolver.setClassInfo(classInfo)
+
+        # Bbox masks require 1 worker
+        if convertMasksToBbox:
+            workers = 1
         batchKwargs = {}
         if workers > 1 and tf.__version__ > '2.5':
             batchKwargs['num_parallel_calls'] = workers
 
         if workers <= 1:
-            constructor = SequenceDataGenerator
+            constructor = SquareMaskSequenceDataGenerator if convertMasksToBbox else SequenceDataGenerator
         else:
             def constructor(**kwargs):
                 return dataGeneratorFromIter(**kwargs) \

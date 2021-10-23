@@ -6,13 +6,15 @@ from pathlib import Path
 import cv2 as cv
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from s3a import generalutils as gutils
+from skimage.measure import regionprops
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
-import tensorflow as tf
 
 from s3awfs.workflows.constants import RNG
+
 
 class SequenceDataGenerator(Sequence):
     """
@@ -95,15 +97,25 @@ class SequenceDataGenerator(Sequence):
         num_classes = self.numOutputClasses
         images = np.empty((len(image_names), *self.imageShape), dtype=np.uint8)
         masks = np.empty((len(image_names), *self.imageShape[:2], num_classes), dtype=np.uint8)
-        for index, img_file in enumerate(image_names):
-            img = gutils.cvImread_rgb(self.imagesDir / img_file, cv.IMREAD_UNCHANGED)
-            mask = gutils.cvImread_rgb(self.labelMasksDir / img_file, cv.IMREAD_UNCHANGED)
-            # Uncomment below to turn to single class
-            # mask[mask > 0] = 1
+        for index, imageFile in enumerate(image_names):
+            img = gutils.cvImread_rgb(self.imagesDir / imageFile, cv.IMREAD_UNCHANGED)
+            mask = self.getMask(imageFile)
             images[index, ...] = img
-            mask = to_categorical(mask, num_classes=num_classes, dtype=np.uint8)
             masks[index, ...] = mask
         return images, masks
+
+    def getMask(self, maskName):
+        mask = gutils.cvImread_rgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
+        mask = to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
+        return mask
+
+class SquareMaskSequenceDataGenerator(SequenceDataGenerator):
+    def getMask(self, maskName):
+        mask = gutils.cvImread_rgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
+        for region in regionprops(mask):
+            bbox = region.bbox
+            mask[bbox[0]:bbox[2], bbox[1]:bbox[3]] = region.label
+        return to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
 
 oldgen = SequenceDataGenerator
 
