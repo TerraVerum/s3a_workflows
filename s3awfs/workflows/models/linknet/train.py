@@ -62,7 +62,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         learningRate=0.001,
         batchSize=8,
         epochs=1000,
-        numPredictionsDuringTrain=0,
+        predictionDuringTrainPath=None,
         initialEpoch=0,
         workers=1,
         bufferSize=1000,
@@ -75,8 +75,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param learningRate: Adam learning rate during training
         :param batchSize: train batch size
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
-        :param numPredictionsDuringTrain: At the end of each epoch, prediction images will be generated on
-          this many samples of the holdout set for visualization purposes. If 0 or less, nothing happens.
+        :param predictionDuringTrainPath: At the end of each epoch, predictions will be run on images from this
+          directory if it is specified. They will be visible in a subfolder of ``predictionsDir`` based on their
+          epoch number
         :param initialEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
           resume at startEpoch+1. Should match the integer representation of the checkpoint model name
         :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
@@ -186,15 +187,14 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         if tensorboardUpdatesPerEpoch > 0:
             linknetCallbacks.append(linknetTensorboard)
 
-        if numPredictionsDuringTrain > 0:
-            rng = np.random.default_rng(42)
-            testFiles = rng.choice(
-                fns.naturalSorted(tvtWf.testDir.joinpath(PEW.imagesDir).glob('*.png')),
-                numPredictionsDuringTrain,
-                replace=False
-            )
+        if predictionDuringTrainPath is not None:
+            predictionDuringTrainPath = Path(predictionDuringTrainPath)
             labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', na_filter=False)['label']
             def predictAfterEpoch(epoch, logs):
+                # Calculate test files in function so they can be swapped out by the user in between
+                # epochs if desired
+                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob('*.png'))
+
                 # Add 1 to match naming scheme of ModelCheckpoint
                 epoch += 1
                 outDir = self.predictionsDir/epochFormatter.format(epoch=epoch)
@@ -221,8 +221,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         linknetModel.save(self.savedModelFile)
         # Only need to save final if there was no intermediate saving
-        if numPredictionsDuringTrain <= 0:
-            testFiles = fns.naturalSorted((tvtWf.testDir/PEW.imagesDir).glob('*.png'))
+        if predictionDuringTrainPath is not None:
+            testFiles = fns.naturalSorted(predictionDuringTrainPath.glob('*.png'))
             self.savePredictions(linknetModel, testFiles)
         export_training_data(self.graphsDir, self.name)
 
@@ -290,6 +290,6 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             numClasses = len(pd.read_csv(self.input['parent'].get(TrainValidateTestSplitWorkflow).classInfoFile, usecols=['label']))
         model = LinkNet(512, 512, numClasses).get_model()
         model.load_weights(weightsFile)
-        if len(testImagePaths):
+        if testImagePaths is not None and len(testImagePaths):
             self.savePredictions(model, testImagePaths)
         return model
