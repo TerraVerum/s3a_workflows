@@ -211,6 +211,8 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     def _balanceClasses(self, summaryDf, labelInfoDf=None):
         if labelInfoDf is None:
             groupCol = 'label'
+            # Populate 'groupCol' so outer access to this file can always use that column
+            summaryDf['groupCol'] = summaryDf['label']
         else:
             groupCol = 'labelGroup'
             summaryDf = summaryDf.copy()
