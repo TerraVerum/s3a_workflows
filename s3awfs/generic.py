@@ -142,7 +142,7 @@ class MainWorkflow(NestedWorkflow):
         if overwriteConfig and kwargs:
             mwf.saveStringifiedConfig(**initKwargs)
         if run:
-            mwf.run(**runKwargs)
+            mwf.run(**runKwargs, parent=mwf)
 
         return mwf
 
