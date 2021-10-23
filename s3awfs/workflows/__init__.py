@@ -3,8 +3,7 @@ from .fmtinput import FormattedInputWorkflow
 from .models.linknet import LinkNetTrainingWorkflow
 from .png import PngExportWorkflow
 from .regionpropfeats import RegionPropertiesWorkflow
-# Hold off on this for now
-# from .imagefeats import FeatureTransformerWorkflow
+from .imagefeats import FeatureTransformerWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
 from .utils import WorkflowDir, NestedWorkflow
 
@@ -15,6 +14,7 @@ __all__  = [
     'RegionPropertiesWorkflow',
     'PngExportWorkflow',
     'TrainValidateTestSplitWorkflow',
+    'FeatureTransformerWorkflow',
     'LinkNetTrainingWorkflow',
     'WorkflowDir',
     'NestedWorkflow',
