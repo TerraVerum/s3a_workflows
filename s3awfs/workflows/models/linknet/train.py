@@ -65,7 +65,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         self,
         parent: NestedWorkflow,
         learningRate=0.001,
-        batchSize=8,
+        batchSize=12,
         epochs=1000,
         predictionDuringTrainPath=None,
         initialEpoch=0,
