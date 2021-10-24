@@ -11,7 +11,9 @@ from s3awfs.main import MainWorkflow
 from s3awfs.workflows import *
 from s3awfs.workflows.constants import SMD_INIT_OPTS
 
-OUTPUT_PARENT = Path.home()/'Desktop'
+OUTPUT_PARENT = Path('/shared/fpic-paper-experiments/')
+if not OUTPUT_PARENT.exists():
+    OUTPUT_PARENT = Path.home()/'Desktop'
 
 here = Path(__file__).parent
 
