@@ -1,0 +1,7 @@
+Main Workflow:
+- Initialization:
+    stages:
+    - Feature
+    multiprocess: false
+    createDirs: true
+    reset: false

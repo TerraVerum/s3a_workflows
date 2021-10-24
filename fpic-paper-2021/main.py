@@ -24,14 +24,14 @@ def fpicMain(config: str, outputParent=OUTPUT_PARENT, **kwargs):
     fullConfig = here/config
     kwargs.setdefault('writeConfig', True)
     kwargs.setdefault('folder', Path(outputParent)/fullConfig.stem)
-    if 'linknet' in config:
-        runLinknet(fullConfig, **kwargs)
+    if 'linknet' or 'lda' in config:
+        runWithDatagen(fullConfig, **kwargs)
     else:
         kwargs.update(SMD_INIT_OPTS)
         MainWorkflow.fromConfig(fullConfig, run=True, **kwargs)
 
 
-def runLinknet(fullConfig: str | Path, **kwargs):
+def runWithDatagen(fullConfig: str | Path, **kwargs):
     mwf = MainWorkflow.fromConfig(fullConfig, **kwargs)
     # Need to point datas to the right folders
     for wfType in FormattedInputWorkflow, ComponentImagesWorkflow, PngExportWorkflow, TrainValidateTestSplitWorkflow:
