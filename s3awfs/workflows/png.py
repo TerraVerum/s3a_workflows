@@ -67,6 +67,10 @@ class PngExportWorkflow(WorkflowDir):
             self.createOverlays(colormap=overlayColormap)
 
     def _exportSinglePcbImage(self, compImgsFile):
+        outputSummaryName = self.summariesDir / compImgsFile.with_suffix('.csv').name
+        if outputSummaryName.exists():
+            return
+
         outDf = ComponentImagesWorkflow.readDataframe(compImgsFile)
         outDf['imageFile'] = compImgsFile.with_suffix('.png').name
 
@@ -77,7 +81,7 @@ class PngExportWorkflow(WorkflowDir):
         outDf['compImageFile'] = exportedImgs
         outDf: pd.DataFrame
         outDf.drop(columns=['labelMask', 'image']).to_csv(
-            self.summariesDir / compImgsFile.with_suffix('.csv').name,
+            outputSummaryName,
             index=False
         )
 
