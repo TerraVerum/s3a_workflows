@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 from utilitys import fns
 
@@ -31,7 +34,7 @@ def runLinknet(fullConfig: str | Path, **kwargs):
     # Need to point datas to the right folders
     for wfType in FormattedInputWorkflow, ComponentImagesWorkflow, PngExportWorkflow, TrainValidateTestSplitWorkflow:
         curWf: WorkflowDir = mwf.get(wfType)
-        curWf.workflowDir = OUTPUT_PARENT/'datagen'
+        curWf.workflowDir = OUTPUT_PARENT/'datagen'/curWf.name
     mwf.run(parent=mwf)
 
 def fpicMain_cli():

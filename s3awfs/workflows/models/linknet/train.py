@@ -109,6 +109,10 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             else:
                 item.unlink()
 
+        # Bbox masks require 1 worker
+        if convertMasksToBbox:
+            workers = 1
+
         if workers > 1:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
         else:
@@ -133,9 +137,6 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         PEW = PngExportWorkflow
         tvtWf.resolver.setClassInfo(classInfo)
 
-        # Bbox masks require 1 worker
-        if convertMasksToBbox:
-            workers = 1
         batchKwargs = {}
         if workers > 1 and tf.__version__ > '2.5':
             batchKwargs['num_parallel_calls'] = workers
@@ -300,11 +301,11 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             self.savePredictions(model, testImagePaths, outputDir)
         return model
 
-    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None):
+    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, outputDir=None):
         if numClasses is None and 'parent' in self.input:
             numClasses = len(pd.read_csv(self.input['parent'].get(TrainValidateTestSplitWorkflow).classInfoFile, usecols=['label']))
         model = LinkNet(512, 512, numClasses).get_model()
         model.load_weights(weightsFile)
         if testImagePaths is not None and len(testImagePaths):
-            self.savePredictions(model, testImagePaths)
+            self.savePredictions(model, testImagePaths, outputDir=outputDir)
         return model
