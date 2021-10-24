@@ -31,9 +31,8 @@ def runLinknet(fullConfig: str | Path, **kwargs):
     # Need to point datas to the right folders
     for wfType in FormattedInputWorkflow, ComponentImagesWorkflow, PngExportWorkflow, TrainValidateTestSplitWorkflow:
         curWf: WorkflowDir = mwf.get(wfType)
-        curWf.disabled = False
         curWf.workflowDir = OUTPUT_PARENT/'datagen'
-    mwf.run()
+    mwf.run(parent=mwf)
 
 def fpicMain_cli():
     parser = fns.makeCli(fpicMain)

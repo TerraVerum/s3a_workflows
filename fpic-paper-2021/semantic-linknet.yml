@@ -1,7 +1,7 @@
 Main Workflow:
 - Initialization:
     stages:
-    - LinkNet
+    - Link Net
     multiprocess: False
     createDirs: True
     reset: false
