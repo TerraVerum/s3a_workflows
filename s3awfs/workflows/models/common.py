@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from s3a import generalutils as gutils
-from skimage.measure import regionprops
+from skimage.measure import regionprops, label
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
@@ -112,9 +112,11 @@ class SequenceDataGenerator(Sequence):
 class SquareMaskSequenceDataGenerator(SequenceDataGenerator):
     def getMask(self, maskName):
         mask = gutils.cvImread_rgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
-        for region in regionprops(mask):
+        if self.numOutputClasses > 2:
+            raise ValueError('Square mask only works with binary initial labels')
+        for region in regionprops(label(mask)):
             bbox = region.bbox
-            mask[bbox[0]:bbox[2], bbox[1]:bbox[3]] = region.label
+            mask[bbox[0]:bbox[2], bbox[1]:bbox[3]] = 1
         return to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
 
 oldgen = SequenceDataGenerator
