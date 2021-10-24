@@ -100,6 +100,15 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         # Give a formatter that takes into account the starting epoch to avoid overwrites
         epochFormatter = f'{{epoch:0{numEpochDigits}d}}'
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
+
+        # Graphs don't play nice with old files
+        # Directory watchers are spawned early, so delete these directories before they have a chance to see them
+        for item in self.graphsDir.iterdir():
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+
         if workers > 1:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
         else:
@@ -168,12 +177,6 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=initialEpoch) + '.h5')
                 linknetModel.load_weights(weights)
 
-        # Graphs don't play nice with old files
-        for item in self.graphsDir.iterdir():
-            if item.is_dir():
-                shutil.rmtree(item)
-            else:
-                item.unlink()
         if tensorboardUpdatesPerEpoch <= 1:
             updateFreq = 'epoch'
         else:
