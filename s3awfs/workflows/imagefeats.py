@@ -55,7 +55,7 @@ class FeatureTransformerWorkflow(WorkflowDir):
                 base = tvt.trainDir
             else:
                 base = tvt.testDir
-            return self.batchGenerator(
+            return BatchGenerator(
                 [base / 'images' / file for file in summaryDf.loc[dataType, 'compImageFile']],
                 1000,
                 (50, 50)
@@ -81,29 +81,9 @@ class FeatureTransformerWorkflow(WorkflowDir):
         print(f'accuracy: {round(accuracy, 3)}')
         np.save(self.ldaAccuracyFile, outs)
 
-    def batchGenerator(self, allImages, batchSize, outputShape, grayscale=False):
-        sampleImage = cv.imread(str(allImages[0]), cv.IMREAD_UNCHANGED)
-        numChannels = sampleImage.shape[2] if sampleImage.ndim > 2 else 1
-        raveledSize = np.prod((*outputShape, numChannels))
-        # batchSize = max(raveledSize, batchSize)
-        batchSize = min(len(allImages), batchSize)
-        # Make sure batch divides into images
-        allImages = allImages[:(len(allImages)//batchSize)*batchSize]
-        output = np.empty((batchSize, raveledSize), dtype='float32')
-        counter = 0
-        for image in allImages:
-            im = cvImread_rgb(image, cv.IMREAD_UNCHANGED)
-            if grayscale and im.ndim > 2:
-                im = im.mean(2).astype(im.dtype)
-            output[counter, :] = cv.resize(im, outputShape[::-1]).ravel()
-            counter += 1
-            if counter >= batchSize:
-                yield output
-                counter = 0
-
     def trainPca(self, imageGen):
         pca = IncrementalPCA()
-        for batch in tqdm(imageGen, 'Training PCA'):
+        for batch in tqdm(imageGen, 'Training PCA', total=len(imageGen)):
             pca.partial_fit(batch)
         return pca
 
@@ -112,10 +92,42 @@ class FeatureTransformerWorkflow(WorkflowDir):
         numFeatures = np.argmin(np.cumsum(pca.explained_variance_ratio_) < keepVariance) + 1
         X_vec = np.empty((len(labels), numFeatures))
         offset = 0
-        for batch in imageGen:
+        for batch in tqdm(imageGen, 'Transforming for lda'):
             X_vec[offset:offset + batch.shape[0], :] = pca.transform(batch.reshape(batch.shape[0], -1))[:, :numFeatures]
             offset = offset + batch.shape[0]
+        print('Fitting lda...')
         lda.fit(X_vec, labels)
         if returnNumFeatures:
             return lda, numFeatures
         return lda
+
+class BatchGenerator:
+    def __init__(self, allImages, batchSize, outputShape, grayscale=False):
+        sampleImage = cv.imread(str(allImages[0]), cv.IMREAD_UNCHANGED)
+        numChannels = sampleImage.shape[2] if sampleImage.ndim > 2 else 1
+        raveledSize = np.prod((*outputShape, numChannels))
+        batchSize = int(max(raveledSize, batchSize))
+        batchSize = min(len(allImages), batchSize)
+        # Make sure batch divides into images
+        allImages = allImages[:(len(allImages)//batchSize)*batchSize]
+        self.allImages = allImages
+        self.batchSize = batchSize
+        self.grayscale = grayscale
+        self.outputShape = outputShape
+        self.raveledSize = raveledSize
+
+    def __iter__(self):
+        output = np.empty((self.batchSize, self.raveledSize), dtype='float32')
+        counter = 0
+        for image in self.allImages:
+            im = cvImread_rgb(image, cv.IMREAD_UNCHANGED)
+            if self.grayscale and im.ndim > 2:
+                im = im.mean(2).astype(im.dtype)
+            output[counter, :] = cv.resize(im, self.outputShape[::-1]).ravel()
+            counter += 1
+            if counter >= self.batchSize:
+                yield output
+                counter = 0
+
+    def __len__(self):
+        return len(self.allImages)//self.batchSize
