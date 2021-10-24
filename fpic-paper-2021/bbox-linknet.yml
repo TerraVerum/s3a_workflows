@@ -1,0 +1,15 @@
+Main Workflow:
+- Initialization:
+    stages:
+    - LinkNet
+    multiprocess: False
+    createDirs: True
+    reset: false
+- Link Net Training:
+    learningRate: 0.001
+    batchSize: 12
+    epochs: 1000
+    tensorboardUpdatesPerEpoch: 0
+    predictionDuringTrainPath:
+    computeDevices:
+    - /gpu:1

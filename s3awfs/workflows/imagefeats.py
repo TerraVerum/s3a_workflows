@@ -6,14 +6,13 @@ import pickle
 import cv2 as cv
 import numpy as np
 import pandas as pd
-from PIL import Image
 from s3a.generalutils import cvImread_rgb
 from sklearn.decomposition import IncrementalPCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from tqdm import tqdm
 
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
-from .. import TrainValidateTestSplitWorkflow
+from .tvtsplit import TrainValidateTestSplitWorkflow
 
 
 class FeatureTransformerWorkflow(WorkflowDir):

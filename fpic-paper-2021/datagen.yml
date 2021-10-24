@@ -1,0 +1,31 @@
+Main Workflow:
+- Initialization:
+    stages:
+    - Formatted Input
+    - Component Images
+    multiprocess: False
+    createDirs: True
+    reset: false
+- Formatted Input:
+    annotationsPath: C:\Users\njessurun\Desktop\test\Formatted Input\formatted_input
+    augmentationOpts:
+      fraction: 1.0
+      rotationPct: 0.4
+- Component Images:
+    imagesPath: C:\Users\njessurun\Dropbox (UFL)\Optical Images\FPIC\pcb_image
+    labelField: Designator
+    resizeOpts:
+      shape:
+      - 512
+      - 512
+      rotationDeg: 0
+- Train Validate Test Split:
+    labelMap:
+    balanceClasses: false # Only fg/bg, no need to balance
+    balanceFunc: median
+    valPct: 0.15
+    testPct: 0.01 # Lots of unannotated images on which to test
+    replace: false
+    testOnUnused: true
+    maxTestSamps:
+    maskColors: [null]

@@ -169,8 +169,10 @@ class NestedWorkflow(NestedProcess):
                 wf.resetRegisteredPaths()
 
     def createDirs(self, excludeExprs=('.',)):
+        self.workflowDir.mkdir(exist_ok=True)
         for wf in self.stages:
-            wf.createDirs(excludeExprs)
+            if not wf.disabled:
+                wf.createDirs(excludeExprs)
 
     def get(self, wfClass: t.Type[T]) -> T:
         for stage in self.stages:

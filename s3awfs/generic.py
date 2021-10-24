@@ -92,7 +92,7 @@ class MainWorkflow(NestedWorkflow):
         config: dict|FilePath=None,
         folder=None,
         run=False,
-        overwriteConfig=False,
+        writeConfig=False,
         **kwargs
     ):
         """
@@ -105,7 +105,7 @@ class MainWorkflow(NestedWorkflow):
         :param folder: Where to set up this workflow. If no output folder is specified, it will be set to the
           parent folder of the config file.
         :param run: If *True*, the config will be run after being initialized
-        :param overwriteConfig: If *True*, the config actually consumed by this workflow will be saved over the
+        :param writeConfig: If *True*, the config actually consumed by this workflow will be saved over the
           specified config file. This can be useful to ensure extra kwargs passed in get uploaded to the saved config
         :param kwargs: Additional kwargs either passed to ``MainWorkflow.__init__`` or ``MainWorkflow.run`` based
           on their names. See MainWorkflow.splitInitAndRunKwargs
@@ -139,7 +139,7 @@ class MainWorkflow(NestedWorkflow):
 
         mwf = cls(folder, **initKwargs)
         mwf.updateInput(**useConfig, graceful=True)
-        if overwriteConfig and kwargs:
+        if writeConfig:
             mwf.saveStringifiedConfig(**initKwargs)
         if run:
             mwf.run(**runKwargs, parent=mwf)

@@ -8,56 +8,14 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 from PIL import Image
-from s3a import ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, XYVertices, TableData
+from s3a import ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, PRJ_ENUMS
 from s3a.generalutils import pd_iterdict
 from utilitys import fns, PrjParam
 from utilitys.typeoverloads import FilePath
 
 from . import constants
-from .constants import RNG
 from .fmtinput import FormattedInputWorkflow
 from .utils import WorkflowDir, RegisteredPath
-
-class ComponentGenerator:
-    def __init__(
-      self,
-      tableData=None,
-
-    ):
-        self.tableData = tableData or TableData()
-
-    def makeCompDf(
-      self,
-      numRows: int,
-      bbox=None,
-      sizes=None,
-      centers=None,
-      rotations=None,
-      rotationPct=0.4,
-      clipToBbox=True
-    ):
-        if bbox is None:
-            bbox = np.array([[0, 0], [2000, 2000]])
-        span = bbox.ptp(0)
-        if sizes is None:
-            sizes = np.abs(RNG.normal(0.05*span, 0.05*span, (numRows, 2)))
-        if centers is None:
-            centers = RNG.uniform(bbox[0], bbox[1], (numRows, 2))
-        if rotations is None:
-            rotations = np.zeros(numRows)
-            changeIdxs = RNG.choice(numRows, int(numRows * rotationPct), replace=False)
-            rotations[changeIdxs] = RNG.normal(0, 2, len(changeIdxs))
-        outBoxes = []
-        for size, center, rot in zip(sizes, centers, rotations):
-            points = cv.boxPoints((center, size, rot))
-            if clipToBbox:
-                points = np.clip(points, bbox[0], bbox[1])
-            verts = ComplexXYVertices([points.astype(int).view(XYVertices)])
-            outBoxes.append(verts)
-        out = self.tableData.makeCompDf(numRows, sequentialIds=True)
-        out[RTF.VERTICES] = outBoxes
-        return out
-
 
 class ComponentImagesWorkflow(WorkflowDir):
     """
@@ -66,8 +24,9 @@ class ComponentImagesWorkflow(WorkflowDir):
     most intermediate steps, and some fitted data transformers. See `run` for more information
     """
     compImgsDir = RegisteredPath()
-    allLabelsFile = RegisteredPath('.csv')
     fullLabelMasksDir = RegisteredPath()
+
+    allLabelsFile = RegisteredPath('.csv')
     compImgsFile = RegisteredPath('.pkl')
 
     labelField: PrjParam | str = None
@@ -83,7 +42,6 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         super().__init__(workflowFolder, config=config, **kwargs)
         self.io = ComponentIO()
-        self.augmentor = ComponentGenerator()
 
     @classmethod
     def readDataframe(cls, file) -> pd.DataFrame:
@@ -99,11 +57,11 @@ class ComponentImagesWorkflow(WorkflowDir):
         Creates a complete list of all labels from the cleaned input
         """
         if self.allLabelsFile.exists():
-            return pd.read_csv(self.allLabelsFile, index_col='numeric_label', na_filter=False)
+            return pd.read_csv(self.allLabelsFile, index_col='numeric_label', na_filter=False)['label']
         imagesPath = Path(self.input['imagesPath'])
         labelsSer = pd.concat(
             [
-                pd.read_csv(f, dtype=str, na_filter=False)[str(self.labelField)]
+                pd.read_csv(f, na_filter=False)[str(self.labelField)]
                 for f in self.input['parent'].get(FormattedInputWorkflow).formattedFiles
                 if len(list(imagesPath.glob(f.stem + '*')))
             ]
@@ -145,43 +103,33 @@ class ComponentImagesWorkflow(WorkflowDir):
             srcDir=srcDir,
             labelMaskDir={imageFile.name: labelMask},
             labelMapping=numericMapping,
-            resizeOpts=self.input.get('resizeOpts', {}),
+            resizeOpts=resizeOpts,
             labelField=self.labelField,
             returnStats=True
         )
 
         originalExport = self._finalizeSingleExport(csvDf, imageFile.stem, mapping, kwargs)
-        augmented = self._maybeCreateAugmentations(
-            csvDf[RTF.VERTICES],
-            imageFile.name,
-            (stats.height, stats.width),
-        )
-        if augmented is not None:
-            self._finalizeSingleExport(augmented, imageFile.stem + '_augmented', mapping, kwargs, prioritizeById=True)
+
+        augmented = self.input['parent'].get(FormattedInputWorkflow).augmentedInputsDir \
+            .joinpath(imageFile.stem + '.csv')
+        if augmented.exists():
+            # Allow augmentations to be rotated optimally
+            useKwargs = kwargs.copy()
+            useKwargs['resizeOpts'] = {**resizeOpts, 'rotationDeg': PRJ_ENUMS.ROT_OPTIMAL}
+            # Need to populate all fields in case label is an extra column
+            augmentedDf = self.io.importCsv(augmented)
+            augmentedDfWithAllFields = self.io.tableData.makeCompDf(len(augmentedDf)).set_index(augmentedDf.index, drop=True)
+            augmentedDfWithAllFields.update(augmentedDf)
+            self._finalizeSingleExport(
+                augmentedDfWithAllFields,
+                imageFile.stem + '_augmented',
+                mapping,
+                useKwargs,
+                prioritizeById=True
+            )
 
         if returnDf:
             return originalExport
-
-    def _maybeCreateAugmentations(self, originalVerts, imageFile, imageSize):
-        augmentOpts = (self.input.get('augmentationOpts') or {}).copy()
-        if not augmentOpts:
-            return None
-        numComps = len(originalVerts)
-        numComps = int(numComps * augmentOpts.pop('fraction'))
-        existingBoxes = np.array([[(s := v.stack()).min(0), s.max(0)] for v in originalVerts])
-        existingSizes = existingBoxes.ptp(1)
-        augSizes = RNG.normal(existingSizes.mean(0), 2 * existingSizes.std(0), (numComps, 2))
-        augCenters = existingBoxes.mean(1)
-        augCenters += RNG.normal(0, augCenters.std(0) / 4, augCenters.shape)
-        augmentedComps = self.augmentor.makeCompDf(
-            numComps,
-            **augmentOpts,
-            sizes=augSizes,
-            centers=augCenters,
-            bbox=np.array([[0, 0], imageSize[::-1]], dtype=int),
-        )
-        augmentedComps[RTF.IMG_FILE] = imageFile
-        return augmentedComps
 
     def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
         exported = self.io.exportCompImgsDf(df, **kwargs, **extraKwargs)
@@ -255,7 +203,6 @@ class ComponentImagesWorkflow(WorkflowDir):
       labelField: PrjParam | str = None,
       tryMergingComps=False,
       resizeOpts: dict=None,
-      augmentationOpts: dict=None,
       forceVerticalOrientation=False,
     ):
         """
@@ -267,8 +214,6 @@ class ComponentImagesWorkflow(WorkflowDir):
         :param tryMergingComps: Whether to attempt creating a merged dataframe of all subimage samples. This
           will likely fail if the shape is too large due to memory constraints
         :param resizeOpts: Passed to exporting images
-        :param augmentationOpts: Parameters for producing subimage augmentations. If *None*, no augmentations
-          will be produced
         :param forceVerticalOrientation: Whether all exported images should be aligned such that their longest axis is
           top-to-bottom of the image
         """
@@ -276,7 +221,6 @@ class ComponentImagesWorkflow(WorkflowDir):
             if isinstance(s3aProj, FilePath.__args__):
                 s3aProj = fns.attemptFileLoad(s3aProj)
             self.io.tableData.loadCfg(cfgDict=s3aProj)
-            self.augmentor.tableData = self.io.tableData
         if labelField is not None:
             self.labelField = self.io.tableData.fieldFromName(labelField)
         if not self.labelField:
