@@ -123,7 +123,7 @@ class BatchGenerator:
             im = cvImread_rgb(image, cv.IMREAD_UNCHANGED)
             if self.grayscale and im.ndim > 2:
                 im = im.mean(2).astype(im.dtype)
-            output[counter, :] = cv.resize(im, self.outputShape[::-1]).ravel()
+            output[counter, :] = cv.resize(im[...,:3], self.outputShape[::-1]).ravel()
             counter += 1
             if counter >= self.batchSize:
                 yield output

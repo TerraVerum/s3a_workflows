@@ -36,6 +36,7 @@ class FormattedInputWorkflow(WorkflowDir):
         self,
         annotationsPath: FilePath = None,
         augmentationOpts: dict = None,
+        filterExpr: str=None
     ):
         """
         Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
@@ -44,6 +45,7 @@ class FormattedInputWorkflow(WorkflowDir):
           during the workflow.
         :param augmentationOpts: Parameters for producing subimage augmentations. If *None*, no augmentations
           will be produced
+        :param filterExpr: If speficied, this is passed to ``annotation dataframe.query`` to filter out unwanted samples
         """
         if annotationsPath is None:
             return pd.DataFrame()
@@ -52,6 +54,10 @@ class FormattedInputWorkflow(WorkflowDir):
             df = fns.readDataFrameFiles(annotationsPath, SerialImporter.readFile)
         else:
             df = SerialImporter.readFile(annotationsPath)
+        if filterExpr is not None:
+            df = df.query(filterExpr)
+        # Ensure old naming scheme is valid
+        df = df.rename(columns={'Source Image Filename': RTF.IMG_FILE.name})
         for imageName, subdf in tqdm(df.groupby(RTF.IMG_FILE.name), 'Formatting inputs'):
             newName = Path(imageName).with_suffix('.csv').name
             dest = self.formattedInputsDir / newName
