@@ -16,8 +16,8 @@ from .tvtsplit import TrainValidateTestSplitWorkflow
 
 
 class FeatureTransformerWorkflow(WorkflowDir):
-    transformersPath = RegisteredPath()
-    ldaAccuracyFile = RegisteredPath('.npy')
+    transformersDir = RegisteredPath()
+    ldaTestPredictions = RegisteredPath('.npy')
 
     # imageFeaturesDir = RegisteredPath()
     def getFeatsLabels(self, df: pd.DataFrame, labels):
@@ -61,15 +61,19 @@ class FeatureTransformerWorkflow(WorkflowDir):
                 (50, 50)
             )
 
-        gen = batchMaker('train')
-        pca = self.trainPca(gen)
-        lda, numFeatures = self.trainLda(
-            pca,
-            batchMaker('train'),
-            summaryDf.loc['train', 'numericLabel'].to_numpy()
-        )
+        pca, lda = [self.readTransformer(cls) for cls in (IncrementalPCA, LinearDiscriminantAnalysis)]
+        if not pca:
+            gen = batchMaker('train')
+            pca = self.trainPca(gen)
+        if not lda:
+            lda= self.trainLda(
+                pca,
+                batchMaker('train'),
+                summaryDf.loc['train', 'numericLabel'].to_numpy()
+            )
+        numFeatures = lda.coef_.shape[1]
         for obj in lda, pca:
-            with gzip.open(self.transformersPath/f'{type(obj).__name__}.pkl', 'wb') as ofile:
+            with gzip.open(self.transformersDir / f'{type(obj).__name__}.pkl', 'wb') as ofile:
                 pickle.dump(obj, ofile)
 
         testGen = batchMaker('test')
@@ -79,7 +83,7 @@ class FeatureTransformerWorkflow(WorkflowDir):
         outs = np.concatenate(outs)
         accuracy = np.count_nonzero(outs == summaryDf.loc['test', 'numericLabel']) / outs.size
         print(f'accuracy: {round(accuracy, 3)}')
-        np.save(self.ldaAccuracyFile, outs)
+        np.save(self.ldaTestPredictions, outs)
 
     def trainPca(self, imageGen):
         pca = IncrementalPCA()
@@ -87,7 +91,15 @@ class FeatureTransformerWorkflow(WorkflowDir):
             pca.partial_fit(batch)
         return pca
 
-    def trainLda(self, pca: IncrementalPCA, imageGen, labels, keepVariance=0.9, returnNumFeatures=True):
+    def readTransformer(self, tformerClass):
+        inputFile = self.transformersDir.joinpath(f'{tformerClass.__name__}.pkl')
+        if inputFile.exists():
+            with gzip.open(inputFile, 'rb') as ifile:
+                return pickle.load(ifile)
+        # else
+        return None
+
+    def trainLda(self, pca: IncrementalPCA, imageGen, labels, keepVariance=0.9):
         lda = LinearDiscriminantAnalysis()
         numFeatures = np.argmin(np.cumsum(pca.explained_variance_ratio_) < keepVariance) + 1
         X_vec = np.empty((len(labels), numFeatures))
@@ -97,8 +109,6 @@ class FeatureTransformerWorkflow(WorkflowDir):
             offset = offset + batch.shape[0]
         print('Fitting lda...')
         lda.fit(X_vec, labels)
-        if returnNumFeatures:
-            return lda, numFeatures
         return lda
 
 class BatchGenerator:

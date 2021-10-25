@@ -11,7 +11,9 @@ Main Workflow:
     reset: false
 - Formatted Input:
     annotationsPath: C:\Users\njessurun\Dropbox (UFL)\Optical Images\External Datasets\pcb_wacv_2019\raw_conversion.csv
-    filterExpr: 'Class.str.lower().isin(["resistor", "inductor", "capacitor"])'
+    filterExpr: >
+      Class.str.lower().isin(["resistor", "inductor", "capacitor"])
+      & (~Text.str.lower().str.contains("unknown"))
 - Component Images:
     imagesPath: C:\Users\njessurun\Dropbox (UFL)\Optical Images\External Datasets\pcb_wacv_2019\pcb_image
     s3aProj: C:\Users\njessurun\Dropbox (UFL)\Optical Images\External Datasets\pcb_wacv_2019\proj_smd.s3aprj

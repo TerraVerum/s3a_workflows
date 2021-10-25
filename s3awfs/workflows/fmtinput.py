@@ -55,7 +55,7 @@ class FormattedInputWorkflow(WorkflowDir):
         else:
             df = SerialImporter.readFile(annotationsPath)
         if filterExpr is not None:
-            df = df.query(filterExpr)
+            df = df.query(filterExpr, engine='python')
         # Ensure old naming scheme is valid
         df = df.rename(columns={'Source Image Filename': RTF.IMG_FILE.name})
         for imageName, subdf in tqdm(df.groupby(RTF.IMG_FILE.name), 'Formatting inputs'):
