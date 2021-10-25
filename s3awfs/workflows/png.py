@@ -124,7 +124,10 @@ class PngExportWorkflow(WorkflowDir):
         compositor = self.compositor
         compositor.clearOverlays()
         colors = np.unique(mask.ravel())
-        names = labelMap[colors[colors > 0]]
+        if labelMap is not None:
+            names = labelMap[colors[colors > 0]]
+        else:
+            names = None
         compositor.setImage(image)
         compositor.addLabelMask(mask, names)
         if outputFile is not None:

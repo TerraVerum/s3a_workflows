@@ -254,7 +254,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         outputDir = Path(outputDir)
         outputDir.mkdir(exist_ok=True)
         legendVisible = None
-        if 'parent' in self.input:
+        try:
             tvtWf = self.input['parent'].get(TrainValidateTestSplitWorkflow)
             pngWf = self.input['parent'].get(PngExportWorkflow)
             labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label']
@@ -262,7 +262,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 # No need for a legend if there's only foreground/background
                 legendVisible = pngWf.compositor.legend.isVisible()
                 pngWf.compositor.legend.setVisible(False)
-        else:
+        except (FileNotFoundError, KeyError):
+            # Labelmap doesn't exist / parent not specified
             pngWf = PngExportWorkflow('')
             labelMap = None
         compositorProps = pngWf.compositor.propertiesProc
