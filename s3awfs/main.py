@@ -35,7 +35,7 @@ def main_cli():
         parser.add_argument('--help', action='help')
     kwargs = vars(parser.parse_args())
     if 'config' in kwargs:
-        MainWorkflow.fromConfig(run=True, writeConfig=True, **kwargs)
+        MainWorkflow.fromConfig(run=True, **kwargs)
     else:
         main_rgbFeatures512(**kwargs)
 

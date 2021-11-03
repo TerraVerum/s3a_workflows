@@ -92,7 +92,7 @@ class MainWorkflow(NestedWorkflow):
         config: dict|FilePath=None,
         folder=None,
         run=False,
-        writeConfig=False,
+        writeConfig=None,
         **kwargs
     ):
         """
@@ -106,7 +106,10 @@ class MainWorkflow(NestedWorkflow):
           parent folder of the config file.
         :param run: If *True*, the config will be run after being initialized
         :param writeConfig: If *True*, the config actually consumed by this workflow will be saved over the
-          specified config file. This can be useful to ensure extra kwargs passed in get uploaded to the saved config
+          specified config file. This can be useful to ensure extra kwargs passed in get uploaded to the saved config.
+          If *None*, config will only be written if the the destination is different from the source. I.e. if a config
+          outside the workflow folder is used, it will be saved inside the workflow folder. Otherwise, the config
+          won't be overwritten.
         :param kwargs: Additional kwargs either passed to ``MainWorkflow.__init__`` or ``MainWorkflow.run`` based
           on their names. See MainWorkflow.splitInitAndRunKwargs
         """
@@ -114,9 +117,11 @@ class MainWorkflow(NestedWorkflow):
             raise ValueError('"config" and "folder" cannot both be *None*')
         if config is None:
             config = []
+        configFile = None
         if isinstance(config, FilePath.__args__):
+            configFile = Path(config).resolve()
             if folder is None:
-                folder = Path(config).parent
+                folder = configFile.parent
             config = fns.attemptFileLoad(config)
         if cls.name in config:
             # Pop the top level if given
@@ -139,6 +144,8 @@ class MainWorkflow(NestedWorkflow):
 
         mwf = cls(folder, **initKwargs)
         mwf.updateInput(**useConfig, graceful=True)
+        if writeConfig is None:
+            writeConfig = configFile == (folder / 'config.yml').resolve()
         if writeConfig:
             mwf.saveStringifiedConfig(**initKwargs)
         if run:
