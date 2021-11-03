@@ -237,8 +237,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         linknetModel.save(self.savedModelFile)
         # Only need to save final if there was no intermediate saving
-        if predictionDuringTrainPath is not None:
-            testFiles = fns.naturalSorted(predictionDuringTrainPath.glob('*.png'))
+        if predictionDuringTrainPath is None:
+            testFiles = fns.naturalSorted(tvtWf.testDir.glob('*.png'))
             self.savePredictions(linknetModel, testFiles)
         export_training_data(self.graphsDir, self.name)
 
