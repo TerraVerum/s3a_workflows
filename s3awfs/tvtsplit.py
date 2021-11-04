@@ -5,7 +5,6 @@ import os
 import shutil
 import tempfile
 import typing as t
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -14,7 +13,8 @@ import pyqtgraph as pg
 from sklearn.model_selection import train_test_split
 from utilitys import fns
 
-from . import constants, ComponentImagesWorkflow
+from . import constants
+from .compimgs import ComponentImagesWorkflow
 from .png import PngExportWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
 

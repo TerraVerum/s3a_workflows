@@ -10,8 +10,8 @@ from s3a.parameditors.table import TableData
 from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
 
-from . import constants, FormattedInputWorkflow
-from .compimgs import ComponentImagesWorkflow
+from . import constants
+from .fmtinput import FormattedInputWorkflow
 from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
 
 

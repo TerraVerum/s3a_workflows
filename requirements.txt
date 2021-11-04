@@ -3,3 +3,12 @@ utilitys>=0.4.4
 scikit-learn
 opencv-python-headless
 imageio
+numpy
+pandas
+scikit-image
+autobom
+tensorflow>=2.0
+pyqtgraph
+Pillow
+tqdm
+tensorboard

@@ -106,7 +106,6 @@ class LinkNet:
         :param input_layer: Layer object to pass through block.
         :param input_filters: Number of filters to pass in to the input of the block.
         :param output_filters: Number of filters should be contained at the output of block.
-        :param output_layer: Output layer of the decoder block.
         """
         output_layer = Conv2D(
             filters=int(input_filters / 4), kernel_size=(1, 1), kernel_initializer="random_normal", padding="same"

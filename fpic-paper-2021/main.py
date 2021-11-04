@@ -3,13 +3,18 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from s3awfs import WorkflowDir
+from s3awfs.compimgs import ComponentImagesWorkflow
+from s3awfs.fmtinput import FormattedInputWorkflow
+from s3awfs.png import PngExportWorkflow
+from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
+
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 from utilitys import fns
 
 from s3awfs.main import MainWorkflow
-from s3awfs.workflows import *
-from s3awfs.workflows.constants import SMD_INIT_OPTS
+from s3awfs.constants import SMD_INIT_OPTS
 
 OUTPUT_PARENT = Path('/shared/fpic-paper-experiments/')
 if not OUTPUT_PARENT.exists():
@@ -34,6 +39,7 @@ def fpicMain(config: str, outputParent=OUTPUT_PARENT, **kwargs):
 
 def runLinknet(fullConfig: str | Path, **kwargs):
     mwf = MainWorkflow.fromConfig(fullConfig, **kwargs)
+
     # Need to point datas to the right folders
     for wfType in FormattedInputWorkflow, ComponentImagesWorkflow, PngExportWorkflow, TrainValidateTestSplitWorkflow:
         curWf: WorkflowDir = mwf.get(wfType)

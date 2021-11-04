@@ -12,10 +12,11 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from s3a import generalutils as gutils
-from utilitys import fns, NestedProcess, ProcessIO
+from utilitys import fns, NestedProcess
 from utilitys.processing import AtomicProcess
 from utilitys.typeoverloads import FilePath
 
+T = t.TypeVar('T')
 
 def defaultTitle(name, trimExprs, prefix, suffix):
     name = fns.pascalCaseToTitle(name).replace(' ', '_').lower() + suffix
@@ -63,15 +64,6 @@ class RegisteredPath:
     def __fspath__(self):
         return self.subPath
 
-# Simple descriptor since @property doesn't work for classes
-class classproperty:
-    def __init__(self, f):
-        self.f = f
-
-    def __get__(self, obj, owner):
-        return self.f(owner)
-
-
 class WorkflowDir(AtomicProcess):
     outputPaths: t.Set[str] = set()
     name: str = None
@@ -115,8 +107,6 @@ class WorkflowDir(AtomicProcess):
     def runWorkflow(self, *args, **kwargs):
         pass
 
-T = t.TypeVar('T')
-
 class NestedWorkflow(NestedProcess):
     stages: list[WorkflowDir]
 
@@ -150,6 +140,7 @@ class NestedWorkflow(NestedProcess):
         kwargs.setdefault('name', defaultName)
         kwargs.setdefault('interactive', False)
         folder = basePath / kwargs['name']
+        folder = kwargs.pop('folder', folder)
         wf = workflowClass(folder, **kwargs)
         wf.updateInput(parent=self, graceful=True)
         self.stages.append(wf)
@@ -174,10 +165,15 @@ class NestedWorkflow(NestedProcess):
             if not wf.disabled:
                 wf.createDirs(excludeExprs)
 
-    def get(self, wfClass: t.Type[T]) -> T:
+    def get(self, wfClass: t.Type[T], missingOk=True) -> T:
         for stage in self.stages:
             if isinstance(stage, wfClass):
                 return stage
+        # Stage not present already
+        if missingOk:
+            stage = self.addWorkflow(wfClass)
+            stage.disabled = True
+            return stage
         # Requested stage type is not present
         raise KeyError(f'Workflow type "{wfClass}" is not present')
 

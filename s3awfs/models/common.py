@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import tensorflow as tf
-from s3awfs.workflows.constants import RNG
+from s3awfs.constants import RNG
 from skimage.measure import regionprops, label
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.utils import Sequence
@@ -36,7 +36,7 @@ class SequenceDataGenerator(Sequence):
         shuffle=True
     ):
         """
-        :param owned_images: list
+        :param ownedImageNames: list
             A list of Path object file directories for the specific data type.
         :param imagesDir: Path
             Images to use as inputs data
