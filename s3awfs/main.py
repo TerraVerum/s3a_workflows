@@ -1,23 +1,16 @@
 from __future__ import annotations
 
 import inspect
-import sys
 import typing as t
 from pathlib import Path
 
-# Some systems need qt initialized before cv gets imported
-import pyqtgraph as pg
+from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
 import s3awfs
+from s3awfs import NestedWorkflow, Workflow_T, constants, WorkflowDir, wfModules
+from s3awfs.utils import stringifyDict
 
-pg.mkQApp()
-
-from s3awfs import allWorkflows, NestedWorkflow, Workflow_T, constants, WorkflowDir, wfModules
-from s3awfs.constants import DEFAULT_RESIZE_OPTS, SMD_INIT_OPTS
-from s3awfs.utils import argparseHelpAction, stringifyDict
-
-from utilitys import fns, AtomicProcess
 
 class MainWorkflow(NestedWorkflow):
     name = 'Main Workflow'
@@ -187,30 +180,3 @@ class MainWorkflow(NestedWorkflow):
             if kw in kwargs:
                 initKwargs[kw] = kwargs.pop(kw)
         return initKwargs, kwargs
-
-def main_rgbFeatures512(**kwargs):
-    kwargs: dict = {
-        'resizeOpts': DEFAULT_RESIZE_OPTS,
-        **SMD_INIT_OPTS,
-        **kwargs,
-    }
-    folder = kwargs['folder'] = Path(kwargs.pop('folder', None) or Path.home()/'Desktop/rgb_features_512')
-    kwargs['labelMapFile'] = kwargs.get('labelMapFile') or folder/'aliased_labels.csv'
-    init, run = MainWorkflow.splitInitAndRunKwargs(kwargs)
-    mwf = MainWorkflow(**init)
-    return mwf.run(**run)
-
-def main_cli():
-    parser = fns.makeCli(main_rgbFeatures512, parserKwargs=dict(add_help=False))
-    # Expensive, avoid unless requested
-    if '--help' in sys.argv:
-        parser.register('action', 'help', argparseHelpAction(MainWorkflow('garbageasdf', allWorkflows(), createDirs=False)))
-        parser.add_argument('--help', action='help')
-    kwargs = vars(parser.parse_args())
-    if 'config' in kwargs:
-        MainWorkflow.fromConfig(run=True, **kwargs)
-    else:
-        main_rgbFeatures512(**kwargs)
-
-if __name__ == '__main__':
-    main_cli()
