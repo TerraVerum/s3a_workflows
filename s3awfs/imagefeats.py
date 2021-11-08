@@ -33,21 +33,19 @@ class FeatureTransformerWorkflow(WorkflowDir):
     # @fns.dynamicDocstring(transformers=list(transformers))
     def runWorkflow(
         self,
-        parent: NestedWorkflow,
         featureImageShape=(50,50),
         grayscale=False,
         partialFitSize=1000
     ):
         """
         Fits feature transformers like LDA, PCA, etc. on pixel feature data
-        :param parent: Parent NestedWorkflow containing ComponentImagesWorkflow
         :param featureImageShape: Images are resized to this shape before being processed through transforers.
           The number of channels is preserved.
        :param grayscale: If *True*, images are first converted to grayscale.
        :param partialFitSize: With lots of images, they often do not all fit in memory at the same time.
          This determines the number if images in a batch during a call to ``transformer.partial_fit
         """
-        tvt = parent.get(TrainValidateTestSplitWorkflow)
+        tvt = self.parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvt.filteredSummaryFile, index_col='dataType')
 
         def batchMaker(dataType):

@@ -31,16 +31,12 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     labelField: PrjParam | str = None
 
-    def __init__(
-      self,
-      workflowFolder: Path | str,
-      config: dict = None,
-      **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
+
         """
         Initializes the workflow with a location and set of data parameters
         """
-        super().__init__(workflowFolder, config=config, **kwargs)
+        super().__init__(*args, **kwargs)
         self.io = ComponentIO()
 
     @classmethod
@@ -62,7 +58,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         labelsSer = pd.concat(
             [
                 pd.read_csv(f, na_filter=False)[str(self.labelField)]
-                for f in self.input['parent'].get(FormattedInputWorkflow).formattedFiles
+                for f in self.parent.get(FormattedInputWorkflow).formattedFiles
                 if len(list(imagesPath.glob(f.stem + '*')))
             ]
         )
@@ -110,8 +106,7 @@ class ComponentImagesWorkflow(WorkflowDir):
 
         originalExport = self._finalizeSingleExport(csvDf, imageFile.stem, mapping, kwargs)
 
-        augmented = self.input['parent'].get(FormattedInputWorkflow).augmentedInputsDir \
-            .joinpath(imageFile.stem + '.csv')
+        augmented = self.parent.get(FormattedInputWorkflow).augmentedInputsDir.joinpath(imageFile.stem + '.csv')
         if augmented.exists():
             # Allow augmentations to be rotated optimally
             useKwargs = kwargs.copy()
@@ -197,7 +192,6 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def runWorkflow(
       self,
-      parent,
       imagesPath=None,
       s3aProj: FilePath | dict = None,
       labelField: PrjParam | str = None,
@@ -207,7 +201,6 @@ class ComponentImagesWorkflow(WorkflowDir):
     ):
         """
         Entry point for creating image features
-        :param parent: Parent NestedWorkflow
         :param imagesPath: Directory of full-sized PCB images
         :param s3aProj: S3A project file or dict for interpreting csvs
         :param labelField: Field to use as label moving forward
@@ -226,7 +219,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         if not self.labelField:
             raise ValueError('A label field must be selected before images can be exported')
 
-        files = parent.get(FormattedInputWorkflow).formattedFiles
+        files = self.parent.get(FormattedInputWorkflow).formattedFiles
 
         generated = {f.stem for f in self.compImgsDir.glob('*.*')}
         newFiles = fns.naturalSorted(f for f in files if f.stem not in generated)

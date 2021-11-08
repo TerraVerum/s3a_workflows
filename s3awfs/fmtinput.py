@@ -20,16 +20,11 @@ class FormattedInputWorkflow(WorkflowDir):
     formattedInputsDir = RegisteredPath()
     augmentedInputsDir = RegisteredPath()
 
-    def __init__(
-        self,
-        workflowFolder: Path | str,
-        config: dict = None,
-        **kwargs
-    ):
+    def __init__(self, *args, **kwargs):
         """
         Initializes the workflow with a location and set of data parameters
         """
-        super().__init__(workflowFolder, config=config, **kwargs)
+        super().__init__(*args, **kwargs)
         self.augmentor = ComponentGenerator()
 
     def runWorkflow(

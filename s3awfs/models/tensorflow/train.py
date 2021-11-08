@@ -9,52 +9,27 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import tensorflow.keras.backend as K
-from keras.models import load_model
 from s3a import generalutils as gutils
-from tensorflow.keras.callbacks import *
-from tensorflow.keras.metrics import *
-from tensorflow.keras.optimizers import *
+from tensorboard.backend.event_processing import event_accumulator
+from tensorflow.keras.callbacks import LambdaCallback, EarlyStopping, TensorBoard, ModelCheckpoint
+from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
-from utilitys import fns
+from utilitys import fns, ProcessIO
 from utilitys.typeoverloads import FilePath
 
-from .arch import LinkNet
-from ..common import (
-    export_training_data,
+from s3awfs.models.linknet import loadLinknetModel, makeLinknetModel
+from s3awfs.png import PngExportWorkflow
+from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
+from s3awfs.utils import WorkflowDir, RegisteredPath
+from .datagen import (
     dataGeneratorFromIter,
     SequenceDataGenerator,
     SquareMaskSequenceDataGenerator
 )
-from ...png import PngExportWorkflow
-from ...tvtsplit import TrainValidateTestSplitWorkflow
-from ...utils import WorkflowDir, RegisteredPath, NestedWorkflow
 
-def tversky_index(Y_true, Y_predicted, alpha = 0.7):
-    Y_true = K.cast(Y_true, K.floatx())
-    Y_true = K.flatten(Y_true)
-    Y_predicted = K.flatten(Y_predicted)
-    true_positive = K.sum(Y_true * Y_predicted)
-    false_negative = K.sum(Y_true * (1 - Y_predicted))
-    false_positive = K.sum((1 - Y_true) * Y_predicted)
-    ti = (true_positive + 1.0) / (true_positive + alpha * false_negative + (1 - alpha) * false_positive)
-    return ti
 
-def focal_tversky_loss(Y_true, Y_predicted, gamma = 0.75):
-    ti = tversky_index(Y_true, Y_predicted)
-    ftl = K.pow((1 - ti), gamma)
-    return ftl
-
-def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
-    Y_true = K.cast(Y_true, K.floatx())
-    Y_true = K.flatten(Y_true)
-    Y_predicted = K.flatten(Y_predicted)
-    Y_predicted = K.cast(Y_predicted, K.floatx())
-    intersection = K.sum(Y_true * Y_predicted)
-    dc = (2.0 * intersection + smoothness) / (K.sum(Y_true) + K.sum(Y_predicted) + smoothness)
-    return dc
-
-class LinkNetTrainingWorkflow(WorkflowDir):
+class TensorflowTrainingWorkflow(WorkflowDir):
     # Generated during workflow
     graphsDir = RegisteredPath()
     savedModelFile = RegisteredPath('.h5')
@@ -63,7 +38,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        parent: NestedWorkflow,
+        model: Model | FilePath=None,
+        customObjects: dict=None,
         learningRate=0.001,
         batchSize=12,
         epochs=1000,
@@ -72,12 +48,14 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         workers=1,
         bufferSize=1000,
         tensorboardUpdatesPerEpoch=5,
-        computeDevices=("/cpu:0",),
+        strategy=None,
         convertMasksToBbox=False
     ):
         """
         Trains a LinkNet model
-        :param parent: NestedWorkflow with TrainValidateTestSplitWorkflow
+        :param model: Keras model to be trained. Can either be a h5 model file or the Model object itself.
+          defaults to ``self.savedModelFile` if unspecified
+        :param customObjects: Custom objects to be passed during model loading, if any
         :param learningRate: Adam learning rate during training
         :param batchSize: train batch size
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
@@ -91,7 +69,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         :param bufferSize: How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this size
           Only used if workers > 1
         :param tensorboardUpdatesPerEpoch: Number of times per training epoch tensorboard should update
-        :param computeDevices: Devices linknet should attempt to use while training
+        :param strategy: Tensorflow strategy to use during model compilation/training
         :param convertMasksToBbox: If *True*, semantic masks will be converted into bboxes before training.
           This is only useful to experiment with the effect of using bboxes on training accuracy
         """
@@ -113,11 +91,12 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         if convertMasksToBbox:
             workers = 1
 
-        if workers > 1:
-            strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        else:
-            strategy = tf.distribute.MirroredStrategy(computeDevices)
-        tvtWf = parent.get(TrainValidateTestSplitWorkflow)
+        if strategy is None:
+            if workers > 1:
+                strategy = tf.distribute.MultiWorkerMirroredStrategy()
+            else:
+                strategy = tf.distribute.MirroredStrategy()
+        tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
         for typ in tvtWf.TRAIN_NAME, tvtWf.VALIDATION_NAME, tvtWf.TEST_NAME:
@@ -127,8 +106,9 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         earlyStopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
-        loss = focal_tversky_loss
         optimizer = Adam(learning_rate=learningRate)
+        with strategy.scope():
+            model.compile(optimizer=optimizer)
 
         imageSize = 512
         height = imageSize
@@ -168,15 +148,12 @@ class LinkNetTrainingWorkflow(WorkflowDir):
 
         trainSteps, valSteps, testSteps = [calcNumBatches(lst) for lst in tvtFiles]
 
-        numOutputClasses = tvtWf.resolver.numClasses
-        with (strategy.scope()):
-            meanIou = MeanIoU(num_classes=numOutputClasses)
-            metrics = ["accuracy", meanIou, dice_coefficient]
-            linknetModel = LinkNet(height, width, numOutputClasses).get_model()
-            linknetModel.compile(optimizer=optimizer, loss=loss, metrics=metrics)
-            if initialEpoch > 0:
-                weights = self.checkpointsDir.joinpath(epochFormatter.format(epoch=initialEpoch) + '.h5')
-                linknetModel.load_weights(weights)
+        overwriteFile = None
+        if model is None:
+            model = self.savedModelFile
+        if isinstance(model, FilePath.__args__):
+            overwriteFile = model
+            model = load_model(model, custom_objects=customObjects)
 
         if tensorboardUpdatesPerEpoch <= 1:
             updateFreq = 'epoch'
@@ -193,7 +170,6 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         linknetModelcheckpoint = ModelCheckpoint(
             filepath=self.checkpointsDir / (epochFormatter + '.h5'),
             verbose=0,
-            save_weights_only=True,
             save_freq="epoch",
         )
         linknetCallbacks = [
@@ -214,7 +190,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
                 # Add 1 to match naming scheme of ModelCheckpoint
                 epoch += 1
                 outDir = self.predictionsDir/epochFormatter.format(epoch=epoch)
-                self.savePredictions(linknetModel, testFiles, outDir)
+                self.savePredictions(model, testFiles, outDir)
                 PEW(outDir).createOverlays(labels=labels)
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
@@ -222,7 +198,7 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             moreKwargs = dict(use_multiprocessing=True, workers=workers)
         else:
             moreKwargs = {}
-        linknetModel.fit(
+        model.fit(
             trainGenerator,
             steps_per_epoch=trainSteps,
             epochs=epochs,
@@ -233,14 +209,18 @@ class LinkNetTrainingWorkflow(WorkflowDir):
             **moreKwargs
         )
 
-        linknetModel.evaluate(testGenerator, steps=testSteps)
+        model.evaluate(testGenerator, steps=testSteps)
 
-        linknetModel.save(self.savedModelFile)
+        model.save(self.savedModelFile)
         # Only need to save final if there was no intermediate saving
         if predictionDuringTrainPath is None:
-            testFiles = fns.naturalSorted(tvtWf.testDir.glob('*.png'))
-            self.savePredictions(linknetModel, testFiles)
-        export_training_data(self.graphsDir, self.name)
+            testFiles = fns.naturalSorted(tvtWf.testDir.joinpath(PEW.imagesDir).glob('*.png'))
+            self.savePredictions(model, testFiles)
+        self.export_training_data()
+        if overwriteFile is not None:
+            # Make sure the updated model replaces the source file
+            model.save(overwriteFile)
+        return ProcessIO(model=model)
 
     def savePredictions(self, model, testImagePaths, outputDir=None):
         """
@@ -255,8 +235,8 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         outputDir.mkdir(exist_ok=True)
         legendVisible = None
         try:
-            tvtWf = self.input['parent'].get(TrainValidateTestSplitWorkflow)
-            pngWf = self.input['parent'].get(PngExportWorkflow)
+            tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
+            pngWf = self.parent.get(PngExportWorkflow)
             labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label']
         except (FileNotFoundError, KeyError, AttributeError):
             # Labelmap doesn't exist / parent not specified
@@ -280,6 +260,41 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         if legendVisible is not None:
             pngWf.compositor.legend.setVisible(legendVisible)
 
+    def export_training_data(self):
+        """
+        Uses the tensorboard library to generate a CSV file of the training data for a specific model, with the data containing the specific Loss, Accuracy, Mean IoU, and Dice Coefficient values at each epoch the model is trained. Saves the csv files in the <BASE_PATH>/Graphs/<NETWORK_MODEL>/Training Values path with the training session name as the file name.
+        :return values_df: The dataframe of the different metric values for each training epoch.
+        """
+        for subpath in 'train', 'validation':
+            self.graphsDir.joinpath(subpath).mkdir(exist_ok=True)
+        graph_path = self.graphsDir
+        csv_path = f'{graph_path}.csv'
+        if os.path.isfile(csv_path):
+            values_df = pd.read_csv(csv_path)
+        else:
+            ea_train = event_accumulator.EventAccumulator(str(graph_path / 'train'))
+            ea_validation = event_accumulator.EventAccumulator(str(graph_path / 'validation'))
+            ea_train.Reload()
+            ea_validation.Reload()
+            train_values = []
+            validation_values = []
+            scalars = ea_train.Tags()["scalars"]
+            if not scalars:
+                return
+            for scalar in scalars:
+                train_values.append([scalar_event.value for scalar_event in ea_train.Scalars(scalar)])
+                validation_values.append([scalar_event.value for scalar_event in ea_validation.Scalars(scalar)])
+            values = train_values + validation_values
+            values = np.array(values)
+            values = np.transpose(values)
+            values_df = pd.DataFrame(values)
+            values_df.index.name = "Epoch"
+            values_df.columns = pd.MultiIndex.from_product(
+                [["Train", "Validation"], ["Loss", "Accuracy", "Mean IoU", "Dice Coefficient"]]
+            )
+            values_df.to_csv(csv_path)
+        return values_df
+
     def loadAndTestModel(
         self,
         testImagePaths: t.Sequence[FilePath]=None,
@@ -291,22 +306,16 @@ class LinkNetTrainingWorkflow(WorkflowDir):
         else:
             modelFile = self.savedModelFile
 
-        customObjects = {
-            'dice_coefficient': dice_coefficient,
-            'tversky_index': tversky_index,
-            'focal_tversky_loss': focal_tversky_loss,
-        }
-
-        model = load_model(modelFile, compile = True, custom_objects = customObjects)
+        model = loadLinknetModel(modelFile)['model']
         if testImagePaths:
             self.savePredictions(model, testImagePaths, outputDir)
         return model
 
     def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, outputDir=None):
-        if numClasses is None and 'parent' in self.input:
-            numClasses = len(pd.read_csv(self.input['parent'].get(TrainValidateTestSplitWorkflow).classInfoFile, usecols=['label']))
-        model = LinkNet(512, 512, numClasses).get_model()
-        model.load_weights(weightsFile)
+        classInfoFile = self.parent.get(TrainValidateTestSplitWorkflow).classInfoFile
+        if numClasses is None and classInfoFile.exists():
+            numClasses = len(pd.read_csv(classInfoFile, usecols=['label']))
+        model = makeLinknetModel(numClasses, weightsFile=weightsFile)['model']
         if testImagePaths is not None and len(testImagePaths):
             self.savePredictions(model, testImagePaths, outputDir=outputDir)
         return model

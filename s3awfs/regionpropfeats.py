@@ -82,19 +82,17 @@ class RegionPropertiesWorkflow(WorkflowDir):
     @fns.dynamicDocstring(availableFeats=propNames)
     def runWorkflow(
         self,
-        parent: NestedWorkflow,
         useFeatures: list[str]=None
     ):
         """
         Creates a table of ``skimage.regionprops`` where each row corresponds to items from annotation vertices
-        :param parent: NestedWorkflow containing FormattedInputWorkflow
         :param useFeatures: If given, only these features will be extracted from annotation masks. Can be a list
           with any of the following items (defaults to all if not provided) -- {availableFeats}
         """
         if useFeatures is None:
             useFeatures = propNames
         generated = {f.stem for f in self.regionpropFeaturesDir.glob('*.*')}
-        newFiles = fns.naturalSorted(f for f in parent.get(FormattedInputWorkflow).formattedFiles if f.stem not in generated)
+        newFiles = fns.naturalSorted(f for f in self.parent.get(FormattedInputWorkflow).formattedFiles if f.stem not in generated)
         fns.mproc_apply(
             self.textAnnToRegionpropsCsv,
             newFiles,

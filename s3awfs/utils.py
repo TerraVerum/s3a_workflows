@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import os.path
 import re
 import shutil
@@ -12,8 +13,8 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from s3a import generalutils as gutils
-from utilitys import fns, NestedProcess
-from utilitys.processing import AtomicProcess
+from utilitys import NestedProcess, ProcessStage
+from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
 T = t.TypeVar('T')
@@ -31,6 +32,16 @@ def defaultTitle(name, trimExprs, prefix, suffix):
 def titleCase(*args):
     name = defaultTitle(*args)
     return fns.pascalCaseToTitle(name)
+
+# Credit: https://stackoverflow.com/a/37095733/9463643
+def path_is_parent(parent_path, child_path):
+    # Smooth out relative path names, note: if you are concerned about symbolic links, you should use os.path.realpath too
+    parent_path = os.path.abspath(parent_path)
+    child_path = os.path.abspath(child_path)
+
+    # Compare the common path of the parent and child path with the common path of just the parent path. Using the commonpath method on just the parent path will regularise the path name in the same way as the comparison that deals with both paths, removing any trailing path separator
+    return parent_path == os.path.commonpath([parent_path, child_path])
+
 
 class RegisteredPath:
 
@@ -64,26 +75,53 @@ class RegisteredPath:
     def __fspath__(self):
         return self.subPath
 
-class WorkflowDir(AtomicProcess):
+class WorkflowMixin:
+    def __init__(
+        self,
+        folder: Path|str=None,
+        parent: NestedWorkflow=None
+    ):
+        self.localFolder = Path(folder or '')
+        self.parent = parent
+
+    @property
+    def workflowDir(self):
+        if self.parent:
+            return self.parent.workflowDir/self.localFolder
+        return self.localFolder
+
+    def resetRegisteredPaths(self): ...
+
+    def createDirs(self): ...
+
+class WorkflowDir(AtomicProcess, WorkflowMixin):
     outputPaths: t.Set[str] = set()
     name: str = None
 
     def __init__(
         self,
-        folder: Path | str,
+        name: str=None,
+        folder: Path | str=None,
         *,
         reset=False,
         createDirs=False,
         **kwargs
     ):
-        self.workflowDir = Path(folder)
+        baseName = self.name or type(self).__name__.replace('Workflow', '')
+        defaultName = fns.pascalCaseToTitle(baseName)
+        name = name or defaultName
+
+        if folder is None:
+            folder = name
+
+        kwargs.setdefault('interactive', False)
+        AtomicProcess.__init__(self, self.runWorkflow, name=name, **kwargs)
+        WorkflowMixin.__init__(self, folder)
 
         if reset:
             self.resetRegisteredPaths()
         if createDirs:
             self.createDirs()
-
-        super().__init__(self.runWorkflow, **kwargs)
 
     def resetRegisteredPaths(self):
         # Sort so parent paths are deleted first during rmtree
@@ -107,7 +145,7 @@ class WorkflowDir(AtomicProcess):
     def runWorkflow(self, *args, **kwargs):
         pass
 
-class NestedWorkflow(NestedProcess):
+class NestedWorkflow(NestedProcess, WorkflowMixin):
     stages: list[WorkflowDir]
 
     def _stageSummaryWidget(self):
@@ -115,44 +153,57 @@ class NestedWorkflow(NestedProcess):
 
     def __init__(
         self,
-        folder: FilePath,
         name: str = None,
+        folder: FilePath=None,
         createDirs=False,
         reset=False,
-        numberStages=False
     ):
-        super().__init__(name)
-        self.workflowDir = Path(folder)
-        self.stageCounter = 1
+        NestedProcess.__init__(self, name or '<Unnamed>')
+        WorkflowMixin.__init__(self, folder or name)
+
         if reset:
             self.resetRegisteredPaths()
         if createDirs:
-            self.workflowDir.mkdir(exist_ok=True)
             self.createDirs()
-        self.numberStages = numberStages
 
-    def addFunction(self, workflowClass: t.Type[T], **kwargs) -> T:
-        basePath = self.workflowDir
-        baseName = workflowClass.name or workflowClass.__name__
-        defaultName = fns.pascalCaseToTitle(baseName.replace("Workflow", ""))
-        if self.numberStages:
-            defaultName = f'{self.stageCounter}. {defaultName}'
-        kwargs.setdefault('name', defaultName)
-        kwargs.setdefault('interactive', False)
-        folder = basePath / kwargs['name']
-        folder = kwargs.pop('folder', folder)
-        wf = workflowClass(folder, **kwargs)
-        wf.updateInput(parent=self, graceful=True)
-        self.stages.append(wf)
-        self.stageCounter += 1
-        return wf
+    def disableStages(self, *stageClasses: t.Type[WorkflowDir]):
+        for cls in stageClasses:
+            self.get(cls).disabled = True
 
-    # Alias for readability
-    addWorkflow = addFunction
+    def saveStringifiedConfig(self, **initKwargs):
+        state = self.saveState(includeDefaults=True)
+        # Make a dummy process for input parameters just to easily save its state
+        initState = AtomicProcess(self.__init__, name='Initialization', interactive=False, **initKwargs).saveState(
+            includeDefaults=True
+        )
+        state[self.name].insert(0, initState)
 
-    def reflectDirChange(self):
-        for wf in self.stages:
-            wf.workflowDir = self.workflowDir / wf.workflowDir.name
+        # Some values are unrepresentable in their natural form (e.g. Paths)
+        state = stringifyDict(state)
+        fns.saveToFile(state, self.workflowDir / 'config.yml')
+        return state
+
+    @classmethod
+    def splitInitAndRunKwargs(cls, kwargs):
+        """
+        Converts a dict of potentially both __init__ keywords and run() keywords into two separate dicts
+        """
+        initSpec = set(inspect.signature(cls.__init__).parameters)
+        initKwargs = {}
+        for kw in initSpec:
+            if kw in kwargs:
+                initKwargs[kw] = kwargs.pop(kw)
+        return initKwargs, kwargs
+
+    def addWorkflow(self, workflowClass: t.Type[T], **kwargs) -> T:
+        wf = workflowClass(**kwargs)
+        return self.addProcess(wf)
+
+    def addProcess(self, process: ProcessStage):
+        if isinstance(process, Workflow_T):
+            process.parent = self
+            # Ensure workflow path is relative to self
+        return super().addProcess(process)
 
     def resetRegisteredPaths(self):
         for wf in self.stages:
@@ -162,11 +213,11 @@ class NestedWorkflow(NestedProcess):
     def createDirs(self, excludeExprs=('.',)):
         self.workflowDir.mkdir(exist_ok=True)
         for wf in self.stages:
-            if not wf.disabled:
+            if not wf.disabled and isinstance(wf, Workflow_T):
                 wf.createDirs(excludeExprs)
 
     def get(self, wfClass: t.Type[T], missingOk=True) -> T:
-        for stage in self.stages:
+        for stage in self.stages_flattened:
             if isinstance(stage, wfClass):
                 return stage
         # Stage not present already
@@ -176,6 +227,8 @@ class NestedWorkflow(NestedProcess):
             return stage
         # Requested stage type is not present
         raise KeyError(f'Workflow type "{wfClass}" is not present')
+
+Workflow_T = (WorkflowDir, NestedWorkflow)
 
 def argparseHelpAction(nested: NestedWorkflow):
     class NestedWorkflowHelp(argparse.Action):
@@ -328,3 +381,14 @@ def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
         for kk in reversed(discards):
             del item[kk]
     return item
+
+class DirCreator(WorkflowDir):
+    """
+    Convenience class to allow creating workflow dirs from a config file
+    """
+    def __init__(self, **kwargs):
+        kwargs.update(folder='.', createDirs=False, name='Create Directories')
+        super().__init__(**kwargs)
+
+    def runWorkflow(self, **kwargs):
+        self.parent.createDirs()

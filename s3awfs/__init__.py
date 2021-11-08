@@ -1,6 +1,6 @@
 import pydoc
 
-from s3awfs.utils import WorkflowDir, NestedWorkflow
+from .utils import WorkflowDir, NestedWorkflow, Workflow_T
 from .__version__ import __version__
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
@@ -12,10 +12,8 @@ wfModules  = [
     'png.PngExportWorkflow',
     'tvtsplit.TrainValidateTestSplitWorkflow',
     'imagefeats.FeatureTransformerWorkflow',
-    'models.linknet.LinkNetTrainingWorkflow',
+    'models.tensorflow.TensorflowTrainingWorkflow',
 ]
-
-Workflow_T = (WorkflowDir, NestedWorkflow)
 def allWorkflows():
     ret = {}
     for wf in wfModules:
@@ -30,4 +28,4 @@ def getWorkflow(moduleStr, returnName=False):
     name = wfCls.name or moduleStr.split('.')[-1]
     if returnName:
         return wfCls, name
-    return wfClss
+    return wfCls

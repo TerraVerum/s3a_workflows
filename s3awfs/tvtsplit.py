@@ -90,8 +90,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        parent: NestedWorkflow,
-        labelMap: pd.DataFrame=None,
+        labelMap: pd.DataFrame | str | Path=None,
         balanceClasses=True,
         balanceFunc='median',
         valPct=0.15,
@@ -104,7 +103,6 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         """
         From a set of label and image files, forms train, validate, and test subsets.
 
-        :param parent: NestedWorkflow holding PngExportWorkflow
         :param labelMap: Dataframe with numeric_label and label columns. Matches a class label against its numeric
           mask value. One class is allowed to have multiple numeric labels. If not provided, it will default to
           ``ComponentImagesWorkflow.allLabelsFile``.
@@ -122,7 +120,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
           etc.) will make an rgb-colored mask.
         """
         labelMap = self._resolveLabelMap(labelMap)
-        exportWf = parent.get(PngExportWorkflow)
+        exportWf = self.parent.get(PngExportWorkflow)
         fullSummary = pd.read_csv(exportWf.summaryFile)
         if self.filteredSummaryFile.exists():
             summary = pd.read_csv(self.filteredSummaryFile, na_filter=False)
@@ -190,7 +188,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     def _resolveLabelMap(self, labelMap: pd.DataFrame | str=None):
         if labelMap is None:
             # warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
-            labelMap = self.input['parent'].get(ComponentImagesWorkflow).allLabelsFile
+            labelMap = self.parent.get(ComponentImagesWorkflow).allLabelsFile
         if not isinstance(labelMap, (pd.Series, pd.DataFrame)):
             labelMap = pd.read_csv(labelMap, index_col='numeric_label')
         if 'numeric_label' in labelMap.columns:

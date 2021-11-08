@@ -32,19 +32,17 @@ class PngExportWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        parent: NestedWorkflow,
         createOverlays=False,
         overlayColormap=constants.DEFAULT_RGB_CMAP
     ):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.
-        :param parent: parent NestedWorkflow containing ComponentImagesWorkflow
         :param createOverlays: If *True*, ``overlaysDir`` will be populated with every mask superimposed over
           its corresponding image. This can be helpful for visualization, but quite time consuming.
         :param overlayColormap: If ``createOverlays`` is *True*, this is the colormap assigned to mask values
         """
-        compImgsWf = parent.get(ComponentImagesWorkflow)
+        compImgsWf = self.parent.get(ComponentImagesWorkflow)
         files = np.array(list(compImgsWf.compImgsDir.glob('*.*')))
         stems = [f.stem for f in files]
         if self.summaryFile.exists():
@@ -133,3 +131,6 @@ class PngExportWorkflow(WorkflowDir):
         if outputFile is not None:
             compositor.save(outputFile)
         return compositor
+
+    def __reduce__(self):
+        return PngExportWorkflow, (self.name, self.localFolder)

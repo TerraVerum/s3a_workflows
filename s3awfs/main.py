@@ -4,6 +4,7 @@ import inspect
 import typing as t
 from pathlib import Path
 
+from s3a.parameditors.algcollection import AlgCollection
 from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
@@ -55,50 +56,14 @@ class MainWorkflow(NestedWorkflow):
         if createDirs:
             self.createDirs()
 
-    def disableStages(self, *stageClasses: t.Type[WorkflowDir]):
-        for cls in stageClasses:
-            self.get(cls).disabled = True
-
-    @classmethod
-    def resolvePartialWorkflowNames(cls, stageSpec: str | list[str]):
-        if isinstance(stageSpec, (str, Workflow_T)):
-            stageSpec = [stageSpec]
-            returnSingle = True
-        else:
-            returnSingle = False
-        nameFormatter = lambda stage: ''.join(stage.split()).lower()
-        ret = []
-        checked = []
-        for stageName in stageSpec:
-            stageName = nameFormatter(stageName)
-            # Lazily load modules instead of loading all to avoid importing unnecessary long packages
-            # Otherwise, a list comprehension could be used
-            match = wfClass = None
-            for maybeMatchModule in wfModules:
-                wfClass, matchName = s3awfs.getWorkflow(maybeMatchModule, returnName=True)
-                matchName = nameFormatter(matchName)
-                if stageName in matchName:
-                    match = wfClass
-                    break
-                checked.append(stageName)
-            if match is None:
-                # 'checked' will contain all possible values
-                raise KeyError(f'Stage "{stageName}" not recognized, must resemble one of:\n'
-                               f'{", ".join(list(checked))}')
-            else:
-                ret.append(wfClass)
-        if returnSingle:
-            return ret[0]
-        return ret
-
     @classmethod
     def fromConfig(
-        cls,
-        config: dict|FilePath=None,
-        folder=None,
-        run=False,
-        writeConfig=None,
-        **kwargs
+      cls,
+      config: dict | FilePath = None,
+      folder=None,
+      run=False,
+      writeConfig=None,
+      **kwargs
     ):
         """
         Creates a workflow based on a configuration that likely came from a previous run's call to `saveState`.
@@ -148,7 +113,7 @@ class MainWorkflow(NestedWorkflow):
         initKwargs, runKwargs = cls.splitInitAndRunKwargs(kwargs)
 
         mwf = cls(folder, **initKwargs)
-        mwf.updateInput(**useConfig, graceful=True)
+        mwf.updateInput(**useConfig)
         if writeConfig is None:
             writeConfig = configFile != (folder / 'config.yml').resolve()
         if writeConfig:
@@ -158,25 +123,40 @@ class MainWorkflow(NestedWorkflow):
 
         return mwf
 
-    def saveStringifiedConfig(self, **initKwargs):
-        state = self.saveState(includeDefaults=True)
-        # Make a dummy process for input parameters just to easily save its state
-        initState = AtomicProcess(self.__init__, name='Initialization', interactive=False, **initKwargs).saveState(includeDefaults=True)
-        state[self.name].insert(0, initState)
-
-        # Some values are unrepresentable in their natural form (e.g. Paths)
-        state = stringifyDict(state)
-        fns.saveToFile(state, self.workflowDir / 'config.yml')
-        return state
-
     @classmethod
-    def splitInitAndRunKwargs(cls, kwargs):
-        """
-        Converts a dict of potentially both __init__ keywords and run() keywords into two separate dicts
-        """
-        initSpec = set(inspect.signature(cls.__init__).parameters)
-        initKwargs = {}
-        for kw in initSpec:
-            if kw in kwargs:
-                initKwargs[kw] = kwargs.pop(kw)
-        return initKwargs, kwargs
+    def resolvePartialWorkflowNames(cls, stageSpec: str | list[str]):
+        if isinstance(stageSpec, (str, Workflow_T)):
+            stageSpec = [stageSpec]
+            returnSingle = True
+        else:
+            returnSingle = False
+        nameFormatter = lambda stage: ''.join(stage.split()).lower()
+        ret = []
+        checked = []
+        for stageName in stageSpec:
+            stageName = nameFormatter(stageName)
+            # Lazily load modules instead of loading all to avoid importing unnecessary long packages
+            # Otherwise, a list comprehension could be used
+            match = wfClass = None
+            for maybeMatchModule in wfModules:
+                wfClass, matchName = s3awfs.getWorkflow(maybeMatchModule, returnName=True)
+                matchName = nameFormatter(matchName)
+                if stageName in matchName:
+                    match = wfClass
+                    break
+                checked.append(stageName)
+            if match is None:
+                # 'checked' will contain all possible values
+                raise KeyError(
+                    f'Stage "{stageName}" not recognized, must resemble one of:\n'
+                    f'{", ".join(list(checked))}'
+                )
+            else:
+                ret.append(wfClass)
+        if returnSingle:
+            return ret[0]
+        return ret
+
+
+class WorkflowProcClctn(AlgCollection):
+    pass
