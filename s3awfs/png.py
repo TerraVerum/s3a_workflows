@@ -5,6 +5,7 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 from s3a import generalutils as gutils
+from tqdm import tqdm
 from utilitys import fns, widgets
 
 from . import constants
@@ -32,15 +33,13 @@ class PngExportWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        createOverlays=False,
-        overlayColormap=constants.DEFAULT_RGB_CMAP
+        overlayOpts=None,
     ):
         """
         Automatically generates the Neural Network data in an appropriate directory structure
         and format in the base path with the resized and padded images and corresponding binary Masks.
-        :param createOverlays: If *True*, ``overlaysDir`` will be populated with every mask superimposed over
-          its corresponding image. This can be helpful for visualization, but quite time consuming.
-        :param overlayColormap: If ``createOverlays`` is *True*, this is the colormap assigned to mask values
+        :param overlayOpts: If *None*, no overlays are created. Otherwise, this is a dict of options for overlaying. Can
+          include ``opacity`` between 0->1 and ``colormap`` matching pyqtgraph or matplotlib colormap
         """
         compImgsWf = self.parent.get(ComponentImagesWorkflow)
         files = np.array(list(compImgsWf.compImgsDir.glob('*.*')))
@@ -61,8 +60,8 @@ class PngExportWorkflow(WorkflowDir):
         )
 
         self.createMergedSummaries()
-        if createOverlays:
-            self.createOverlays(colormap=overlayColormap)
+        if overlayOpts is not None:
+            self.createOverlays(overlayOpts=overlayOpts, showProgress=True)
 
     def _exportSinglePcbImage(self, compImgsFile):
         outputSummaryName = self.summariesDir / compImgsFile.with_suffix('.csv').name
@@ -96,38 +95,41 @@ class PngExportWorkflow(WorkflowDir):
         return exportName
 
     def createMergedSummaries(self):
+        if not list(self.summariesDir.iterdir()):
+            # No summaries to concatenate
+            return
         concatDf = fns.readDataFrameFiles(self.summariesDir, pd.read_csv)
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
 
-    def createOverlays(self, labels: pd.Series=None, colormap=constants.DEFAULT_RGB_CMAP):
+    def createOverlays(self, labels: pd.Series=None, overlayOpts=None, showProgress=False):
         """
         Overlays masks on top of images and saves to a new directory
         :param labels: Mapping of numeric mask value to its string label
-        :param colormap: Colormap used for mask values
+        :param overlayOpts: Properties used for mask overlays
+        :param showProgress: Whether to display a progress bar during overlay creation
         """
         if labels is None:
             summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
             labels = summaries['label'].drop_duplicates()
             labels[labels.str.len() == 0] = '<blank>'
         oldProps = dict(self.compositor.propertiesProc.input)
-        self.compositor.setOverlayProperties(colormap=colormap)
-        for img in self.imagesDir.glob('*.png'):
+        self.compositor.updateLabelMap(labels)
+        self.compositor.propertiesProc(**(overlayOpts or {}))
+        existingIms = {im.stem for im in self.overlaysDir.glob('*.*')}
+        imgList = fns.naturalSorted([im for im in self.imagesDir.glob('*.png') if im.stem not in existingIms])
+        if showProgress:
+            imgList = tqdm(imgList, 'Creating Overlays')
+        for img in imgList:
             mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
             outputFile = self.overlaysDir / img.with_suffix('.jpg').name
-            self.overlayMaskOnImage(img, mask, labels, outputFile)
-        self.compositor.setOverlayProperties(**oldProps)
+            self.overlayMaskOnImage(img, mask, outputFile)
+        self.compositor.propertiesProc(**oldProps)
 
-    def overlayMaskOnImage(self, image, mask, labelMap=None, outputFile=None):
+    def overlayMaskOnImage(self, image, mask, outputFile=None):
         compositor = self.compositor
-        compositor.clearOverlays()
-        colors = np.unique(mask.ravel())
-        if labelMap is not None:
-            names = labelMap[colors[colors > 0]]
-        else:
-            names = None
         compositor.setImage(image)
-        compositor.addLabelMask(mask, names)
+        compositor.addLabelMask(mask, clearOverlays=True)
         if outputFile is not None:
             compositor.save(outputFile)
         return compositor
