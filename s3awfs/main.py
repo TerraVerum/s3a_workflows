@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import inspect
-import typing as t
 from pathlib import Path
 
 from s3a.parameditors.algcollection import AlgCollection
-from utilitys import fns, AtomicProcess
+from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
 import s3awfs
-from s3awfs import NestedWorkflow, Workflow_T, constants, WorkflowDir, wfModules
-from s3awfs.utils import stringifyDict
+from s3awfs import NestedWorkflow, Workflow_T, constants, wfModules
 
 
 class MainWorkflow(NestedWorkflow):
@@ -38,7 +35,7 @@ class MainWorkflow(NestedWorkflow):
         :param kwargs: Additional keywods for workflow creation
         """
         name = kwargs.pop('name', self.name)
-        super().__init__(folder, name=name)
+        super().__init__(name=name, folder=folder)
 
         if multiprocess:
             constants.DEBUG = False
