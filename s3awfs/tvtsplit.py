@@ -41,12 +41,8 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         outputNames = np.array([os.path.basename(name) for name in outputNames])
 
         if treatAsCache:
-            newFiles = set()
             for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
-                newFiles.update(self._getNewAndDeleteUnusedImages(outputNames, subdir))
-            membership = np.isin(outputNames, np.array(list(newFiles)))
-            labelMaskFiles = np.array(labelMaskFiles, dtype=object)[membership]
-            outputNames = outputNames[membership]
+                self._getNewAndDeleteUnusedImages(outputNames, subdir)
         cmapDirMapping = {
             None: self.labelMasksDir,
             'binary': self.binaryMasksDir,
@@ -54,8 +50,6 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         }
 
         for mask, filename in zip(labelMaskFiles, outputNames):
-            mask = resolver.getMaybeResolve(mask)
-            # Fetch out here to avoid fetching inside loop
             for cmap in {*maskColors, None}:
                 if cmap in cmapDirMapping:
                     dir_ = cmapDirMapping[cmap]
@@ -63,7 +57,11 @@ class LabelMaskResolverWorkflow(WorkflowDir):
                     dir_ = self.rgbMasksDir
                 else:
                     continue
-                resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
+                if not (dir_/filename).exists():
+                    # Don't fetch inside "generate" to avoid re-reading the same mask every iteration. Out here,
+                    # a numpy mask can be loaded over the filename
+                    mask = resolver.getMaybeResolve(mask)
+                    resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
 
     @staticmethod
     def _getNewAndDeleteUnusedImages(shouldExist: t.Sequence[str], folder: Path):
