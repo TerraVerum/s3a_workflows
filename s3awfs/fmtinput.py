@@ -77,6 +77,8 @@ class FormattedInputWorkflow(WorkflowDir):
         augSizes = RNG.normal(existingSizes.mean(0), 2 * existingSizes.std(0), (numComps, 2))
         augCenters = existingBoxes.mean(1)
         augCenters += RNG.normal(0, augCenters.std(0) / 4, augCenters.shape)
+        # Accomodate case where more rows are requested than exist in the dataframe
+        augCenters = RNG.choice(augCenters, numComps)
         augmentedComps = self.augmentor.makeCompDf(
             numComps,
             **augmentOpts,
