@@ -1,19 +1,17 @@
 from __future__ import annotations
+
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from autobom.constants import TEMPLATES_DIR
+from skimage.measure import regionprops_table, regionprops
+
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
 from s3a.compio.helpers import deserialize
-from s3a.parameditors.table import TableData
-from skimage.measure import regionprops_table, regionprops
 from utilitys import fns
-
 from . import constants
 from .fmtinput import FormattedInputWorkflow
-from .utils import RegisteredPath, NestedWorkflow, WorkflowDir
-
+from .utils import RegisteredPath, WorkflowDir
 
 # -----
 # Various image features
@@ -30,7 +28,7 @@ for unused in ['convex_image', 'coords', 'filled_image', 'image', 'centroid', 'l
     propNames.remove(unused)
 
 class RegionPropertiesWorkflow(WorkflowDir):
-    io = ComponentIO(TableData(TEMPLATES_DIR/'proj_smd.s3aprj'))
+    io = ComponentIO()
 
     regionpropFeaturesFile = RegisteredPath('.csv') # Concatenated features
     regionpropFeaturesDir = RegisteredPath() # Per-image features

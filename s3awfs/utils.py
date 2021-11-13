@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 from s3a import generalutils as gutils
+from s3a.parameditors.algcollection import AlgParamEditor
 from utilitys import NestedProcess, ProcessStage
 from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
@@ -41,7 +42,6 @@ def path_is_parent(parent_path, child_path):
 
     # Compare the common path of the parent and child path with the common path of just the parent path. Using the commonpath method on just the parent path will regularise the path name in the same way as the comparison that deals with both paths, removing any trailing path separator
     return parent_path == os.path.commonpath([parent_path, child_path])
-
 
 class RegisteredPath:
 
@@ -76,11 +76,16 @@ class RegisteredPath:
         return self.subPath
 
 class WorkflowMixin:
+    name: str
+
     def __init__(
         self,
         folder: Path|str=None,
         parent: NestedWorkflow=None
     ):
+        # Account for case where process was formed from "parseFromQualname"
+        if isinstance(folder, str) and self.__module__ in folder:
+            folder = fns.pascalCaseToTitle(folder.split('.')[-1].replace('Workflow', ''))
         self.localFolder = Path(folder or '')
         self.parent = parent
 
@@ -170,7 +175,7 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
         for cls in stageClasses:
             self.get(cls).disabled = True
 
-    def saveStringifiedConfig(self, **initKwargs):
+    def saveStringifiedConfig(self, folder: str | Path=None, **initKwargs):
         state = self.saveState(includeDefaults=True)
         # Make a dummy process for input parameters just to easily save its state
         initState = AtomicProcess(self.__init__, name='Initialization', interactive=False, **initKwargs).saveState(
@@ -180,7 +185,9 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
 
         # Some values are unrepresentable in their natural form (e.g. Paths)
         state = stringifyDict(state)
-        fns.saveToFile(state, self.workflowDir / 'config.yml')
+        if folder is None:
+            folder = self.workflowDir
+        fns.saveToFile(state, Path(folder).joinpath('config.yml'))
         return state
 
     @classmethod
@@ -392,3 +399,16 @@ class DirCreator(WorkflowDir):
 
     def runWorkflow(self, **kwargs):
         self.parent.createDirs()
+
+def pathCtor(constructor, node):
+  return Path(constructor.construct_scalar(node))
+fns.loader.constructor.add_constructor('!Path', pathCtor)
+
+class WorkflowEditor(AlgParamEditor):
+  def _resolveProccessor(self, proc):
+    retProc = super()._resolveProccessor(proc)
+    if retProc is not None:
+      # Only one top processor can exist, so setting the workflow dir on subfolders
+      # will keep each primitive proc at the saveDir level
+      retProc.localFolder = self.saveDir
+    return retProc

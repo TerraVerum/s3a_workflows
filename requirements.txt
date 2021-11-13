@@ -6,7 +6,6 @@ imageio
 numpy
 pandas
 scikit-image
-autobom
 tensorflow>=2.0
 pyqtgraph
 Pillow
