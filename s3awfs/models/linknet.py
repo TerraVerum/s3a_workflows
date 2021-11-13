@@ -54,7 +54,7 @@ class LinkNet:
     """
     Class for the LinkNet Semantic Segmentation Neural Network
     """
-    def __init__(self, inputShape: tuple, numClasses=2):
+    def __init__(self, inputShape: tuple, numClasses=2, dropout=0.5):
         """
         :param inputShape: Shape of the images processed by the network (w, h, nchans)
         :param numClasses: The number of output classes for the Neural Network data.
@@ -90,14 +90,14 @@ class LinkNet:
         )(self.decoder1)
         self.output_layer = BatchNormalization()(self.output_layer)
         self.output_layer = Activation("relu")(self.output_layer)
-        self.output_layer = Dropout(0.5)(self.output_layer)
+        self.output_layer = Dropout(dropout)(self.output_layer)
 
         self.output_layer = Conv2D(filters=32, kernel_size=(3, 3), kernel_initializer="random_normal", padding="same")(
             self.output_layer
         )
         self.output_layer = BatchNormalization()(self.output_layer)
         self.output_layer = Activation("relu")(self.output_layer)
-        self.output_layer = Dropout(0.5)(self.output_layer)
+        self.output_layer = Dropout(dropout)(self.output_layer)
 
         self.output_layer = Conv2DTranspose(
             filters=numClasses, kernel_size=(2, 2), strides=2, kernel_initializer="random_normal", padding="same"
@@ -198,6 +198,7 @@ class LinkNet:
 def makeLinknetModel(
   numClasses=2,
   imageShape=(512,512,3),
+  dropout=0.5,
   weightsFile=None,
   outputFile=None,
   strategy=None
@@ -208,7 +209,7 @@ def makeLinknetModel(
     """
     strategy = strategy or tf.distribute.MirroredStrategy()
     with strategy.scope():
-        model = LinkNet(imageShape, numClasses).model
+        model = LinkNet(imageShape, numClasses, dropout).model
         meanIou = MeanIoU(num_classes=numClasses)
         metrics = ["accuracy", meanIou]
         model.compile(loss=focal_tversky_loss, metrics=metrics)
