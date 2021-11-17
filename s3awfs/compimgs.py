@@ -113,6 +113,10 @@ class ComponentImagesWorkflow(WorkflowDir):
             useKwargs['resizeOpts'] = {**resizeOpts, 'rotationDeg': PRJ_ENUMS.ROT_OPTIMAL}
             # Need to populate all fields in case label is an extra column
             augmentedDf = self.io.importCsv(augmented)
+            if not len(augmentedDf):
+                if returnDf:
+                    return originalExport
+                return
             augmentedDfWithAllFields = self.io.tableData.makeCompDf(len(augmentedDf)).set_index(augmentedDf.index, drop=True)
             augmentedDfWithAllFields.update(augmentedDf)
             self._finalizeSingleExport(
