@@ -7,6 +7,7 @@ import pandas as pd
 from s3a import generalutils as gutils
 from tqdm import tqdm
 from utilitys import fns, widgets
+from utilitys.typeoverloads import FilePath
 
 from . import constants
 from .compimgs import ComponentImagesWorkflow
@@ -110,8 +111,10 @@ class PngExportWorkflow(WorkflowDir):
         :param showProgress: Whether to display a progress bar during overlay creation
         """
         if labels is None:
-            summaries = pd.read_csv(self.summaryFile, dtype=str, na_filter=False, index_col=['numericLabel'])
-            labels = summaries['label'].drop_duplicates()
+            labels = self.summaryFile
+        if isinstance(labels, FilePath.__args__):
+            labels = pd.read_csv(labels, dtype=str, na_filter=False, index_col=['numericLabel'])
+            labels = labels['label'].drop_duplicates()
             labels[labels.str.len() == 0] = '<blank>'
         oldProps = dict(self.compositor.propertiesProc.input)
         self.compositor.updateLabelMap(labels)
