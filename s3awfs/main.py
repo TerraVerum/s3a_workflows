@@ -108,7 +108,8 @@ class MainWorkflow(NestedWorkflow):
         useNames = [nameFmt(name) for name in useConfig]
         kwargs.setdefault('stages', useNames)
         initKwargs, runKwargs = cls.splitInitAndRunKwargs(kwargs)
-
+        
+        folder = Path(folder or '')
         mwf = cls(folder, **initKwargs)
         mwf.updateInput(**useConfig)
         if writeConfig is None:
