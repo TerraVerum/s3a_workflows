@@ -1,4 +1,5 @@
 from __future__ import annotations
+import typing as t
 
 from pathlib import Path
 
@@ -17,7 +18,7 @@ class MainWorkflow(NestedWorkflow):
     def __init__(
         self,
         folder,
-        stages: list[str | Workflow_T],
+        stages: list[str | t.Type[Workflow_T]],
         multiprocess=False,
         createDirs=True,
         reset=False,
@@ -40,9 +41,13 @@ class MainWorkflow(NestedWorkflow):
         if multiprocess:
             constants.DEBUG = False
 
-        useClasses = self.resolvePartialWorkflowNames(stages)
-        if not isinstance(useClasses, list):
-            useClasses = [useClasses]
+        useClasses = []
+        if isinstance(stages, str):
+            stages = [stages]
+        for ii, cls in enumerate(stages):
+            if isinstance(cls, str):
+                cls = self.resolvePartialWorkflowNames(cls)
+            useClasses.append(cls)
 
         for stageClass in useClasses:
             self.addWorkflow(stageClass, **kwargs)
