@@ -163,10 +163,10 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
         imageDir = destDir / PEW.imagesDir
         imageDir.mkdir(exist_ok=True)
-        keepImages = df['compImageFile'].to_numpy()
-        existing = np.array([im.name for im in imageDir.glob('*.png')], dtype=object)
-        newImages = np.setdiff1d(keepImages, existing)
-        toDelete = np.setdiff1d(existing, keepImages)
+        keepImages = set(df['compImageFile'])
+        existing = {im.name for im in imageDir.glob('*.png')}
+        newImages = keepImages.difference(existing)
+        toDelete = existing.difference(keepImages)
         for name in toDelete:
             exportWf.imagesDir.joinpath(name).unlink()
         for name in newImages:
