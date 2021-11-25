@@ -39,7 +39,9 @@ class TensorflowTrainingWorkflow(WorkflowDir):
     def runWorkflow(
         self,
         model: Model | FilePath=None,
+        resizeOpts=None,
         customObjects: dict=None,
+        compileOpts: dict=None,
         learningRate=0.001,
         batchSize=12,
         epochs=1000,
@@ -55,7 +57,10 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         Trains a LinkNet model
         :param model: Keras model to be trained. Can either be a h5 model file or the Model object itself.
           defaults to ``self.savedModelFile` if unspecified
+        :param resizeOpts: Options for how images are resized, must contain a 'shape' :key
+          with the shape of the model input
         :param customObjects: Custom objects to be passed during model loading, if any
+        :param compileOpts: Unpacked into `model.compile()` along with Adam loss
         :param learningRate: Adam learning rate during training
         :param batchSize: train batch size
         :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
@@ -106,14 +111,6 @@ class TensorflowTrainingWorkflow(WorkflowDir):
 
         earlyStopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
-        optimizer = Adam(learning_rate=learningRate)
-        with strategy.scope():
-            model.compile(optimizer=optimizer)
-
-        imageSize = 512
-        height = imageSize
-        width = imageSize
-
         PEW = PngExportWorkflow
         tvtWf.resolver.setClassInfo(classInfo)
 
@@ -129,12 +126,13 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                     .shuffle(bufferSize, reshuffle_each_iteration=True) \
                     .batch(batchSize, **batchKwargs) \
                     .prefetch(max(1, bufferSize // 10))
+        resizeOpts = resizeOpts or dict(shape=(512,512))
         generators = [
             constructor(
                 ownedImageNames=nameList,
                 imagesDir=dir_/PEW.imagesDir,
                 labelMasksDir=dir_/PEW.labelMasksDir,
-                imageShape=(height, width, 3),
+                imageShape=(*resizeOpts['shape'], 3),
                 numOutputClasses=tvtWf.resolver.numClasses,
                 batchSize=batchSize,
                 shuffle=True
@@ -151,9 +149,14 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         overwriteFile = None
         if model is None:
             model = self.savedModelFile
-        if isinstance(model, FilePath.__args__):
-            overwriteFile = model
-            model = load_model(model, custom_objects=customObjects)
+        compileOpts = compileOpts or {}
+        compileOpts['optimizer'] = Adam(learning_rate=learningRate)
+        with strategy.scope():
+            if isinstance(model, FilePath.__args__):
+                overwriteFile = model
+                model = load_model(model, custom_objects=customObjects)
+            model.compile(**compileOpts)
+
 
         if tensorboardUpdatesPerEpoch <= 1:
             updateFreq = 'epoch'

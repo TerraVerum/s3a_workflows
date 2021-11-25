@@ -212,14 +212,14 @@ def makeLinknetModel(
         model = LinkNet(imageShape, numClasses, dropout).model
         meanIou = MeanIoU(num_classes=numClasses)
         metrics = ["accuracy", meanIou]
-        model.compile(loss=focal_tversky_loss, metrics=metrics)
+        compileOpts = dict(loss=focal_tversky_loss, metrics=metrics)
     if weightsFile is not None:
         model.load_weights(weightsFile)
     if outputFile is not None and os.path.isfile(outputFile):
         model.save(outputFile)
         model = outputFile
         strategy = None
-    return ProcessIO(model=model, strategy=strategy, customObjects=customObjects)
+    return ProcessIO(model=model, strategy=strategy, customObjects=customObjects, compileOpts=compileOpts)
 
 @lru_cache()
 def loadLinknetModel(file, strategy=None):
