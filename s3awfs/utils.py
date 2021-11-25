@@ -224,10 +224,17 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
                 wf.createDirs(excludeExprs)
 
     def get(self, wfClass: t.Type[T], missingOk=True) -> T:
-        for stage in self.stages_flattened:
-            if isinstance(stage, wfClass):
-                return stage
-        # Stage not present already
+        # Preferentially find the missing stage closest to 'self', checking higher and higher parent levles
+        outerProc = self
+        visited = set()
+        # TODO: Need good way to prefer `get`ting stages closer to 'self's level
+        while outerProc:
+            for stage in set(outerProc.stages_flattened).difference(visited):
+                if isinstance(stage, wfClass):
+                    return stage
+                visited.add(stage)
+            outerProc = outerProc.parent
+        # Stage not present already; add at self's level
         if missingOk:
             stage = self.addWorkflow(wfClass)
             stage.disabled = True
@@ -407,7 +414,7 @@ fns.loader.constructor.add_constructor('!Path', pathCtor)
 class WorkflowEditor(AlgParamEditor):
   def _resolveProccessor(self, proc):
     retProc = super()._resolveProccessor(proc)
-    if retProc is not None:
+    if isinstance(retProc, Workflow_T):
       # Only one top processor can exist, so setting the workflow dir on subfolders
       # will keep each primitive proc at the saveDir level
       retProc.localFolder = self.saveDir
