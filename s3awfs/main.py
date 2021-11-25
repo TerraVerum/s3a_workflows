@@ -1,9 +1,11 @@
 from __future__ import annotations
 import typing as t
+from functools import wraps
 
 from pathlib import Path
 
 from s3a.parameditors.algcollection import AlgCollection
+from s3awfs.utils import WorkflowEditor
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
@@ -60,12 +62,13 @@ class MainWorkflow(NestedWorkflow):
 
     @classmethod
     def fromConfig(
-      cls,
-      config: dict | FilePath = None,
-      folder=None,
-      run=False,
-      writeConfig=None,
-      **kwargs
+        cls,
+        config: dict | FilePath = None,
+        folder=None,
+        workflow: str=None,
+        run=False,
+        writeConfig=None,
+        **kwargs
     ):
         """
         Creates a workflow based on a configuration that likely came from a previous run's call to `saveState`.
@@ -76,6 +79,7 @@ class MainWorkflow(NestedWorkflow):
         :param config: Nested dict from which to initialize. Can come from ``MainWorkflow.saveStringifiedState``
         :param folder: Where to set up this workflow. If no output folder is specified, it will be set to the
           parent folder of the config file.
+        :param workflow: Which top-level workflow from the config to run
         :param run: If *True*, the config will be run after being initialized
         :param writeConfig: If *True*, the config actually consumed by this workflow will be saved over the
           specified config file. This can be useful to ensure extra kwargs passed in get uploaded to the saved config.
@@ -85,6 +89,53 @@ class MainWorkflow(NestedWorkflow):
         :param kwargs: Additional kwargs either passed to ``MainWorkflow.__init__`` or ``MainWorkflow.run`` based
           on their names. See MainWorkflow.splitInitAndRunKwargs
         """
+        if (
+            config is None and folder is None
+            or (not isinstance(config, FilePath.__args__) and folder is None)
+        ):
+            raise ValueError('Either "config" or "folder" must be a filepath')
+        if folder is None:
+            folder = Path(config).parent
+        if config is None:
+            config = folder/'config.alg'
+        editor = AlgCollection(
+            procType=NestedWorkflow,
+            procEditorType=WorkflowEditor
+        ).createProcessorEditor(str(folder))
+        if not isinstance(config, FilePath.__args__):
+            fullConfig = config
+            config = 'config.alg'
+        else:
+            fullConfig = fns.attemptFileLoad(config)
+        if 'top' not in fullConfig:
+            # Classic style
+            return cls.fromClassicConfig(config, folder, run, writeConfig, **kwargs)
+        if workflow is not None:
+            fullConfig['active'] = workflow
+        editor.loadParamValues(config, fullConfig)
+        proc: NestedWorkflow = editor.curProcessor.processor
+        saveName = Path(config).resolve()
+        if kwargs:
+            proc.updateInput(**kwargs)
+
+        if writeConfig is None:
+            writeConfig = saveName.parent != proc.workflowDir
+        if writeConfig:
+            editor.saveParamValues(proc.workflowDir / saveName.name)
+
+        if run:
+            proc.run()
+
+    @classmethod
+    @wraps(fromConfig)
+    def fromClassicConfig(
+      cls,
+      config: dict | FilePath = None,
+      folder=None,
+      run=False,
+      writeConfig=None,
+      **kwargs
+    ):
         if config is None and folder is None:
             raise ValueError('"config" and "folder" cannot both be *None*')
         if config is None:
@@ -162,7 +213,6 @@ class MainWorkflow(NestedWorkflow):
         if returnSingle:
             return ret[0]
         return ret
-
 
 class WorkflowProcClctn(AlgCollection):
     pass
