@@ -147,13 +147,16 @@ class MainWorkflow(NestedWorkflow):
                 if stageName in matchName:
                     match = wfClass
                     break
-                checked.append(stageName)
+                checked.append(matchName)
             if match is None:
+                # KeyError preserves '\n' in error messages due to using repr instead of str
+                # Hacky workaround to accomodate this
+                class KeyErrMsg(str):
+                    def __repr__(self): return str(self)
                 # 'checked' will contain all possible values
-                raise KeyError(
-                    f'Stage "{stageName}" not recognized, must resemble one of:\n'
-                    f'{", ".join(list(checked))}'
-                )
+                msg = f'Stage "{stageName}" not recognized, must resemble one of:\n' \
+                      f'{", ".join(list(checked))}'
+                raise KeyError(KeyErrMsg(msg))
             else:
                 ret.append(wfClass)
         if returnSingle:
