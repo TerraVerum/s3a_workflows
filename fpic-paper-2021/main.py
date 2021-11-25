@@ -8,8 +8,6 @@ from s3awfs import NestedWorkflow
 from s3awfs.utils import WorkflowEditor
 from utilitys import fns
 
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-
 here = Path(__file__).resolve().parent
 OUTPUT_PARENT = Path('/shared/fpic-paper-experiments/')
 if not OUTPUT_PARENT.exists():
