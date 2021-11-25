@@ -76,7 +76,7 @@ class RegisteredPath:
         return self.subPath
 
 class WorkflowMixin:
-    name: str
+    name: str = None
 
     def __init__(
         self,
@@ -101,7 +101,6 @@ class WorkflowMixin:
 
 class WorkflowDir(AtomicProcess, WorkflowMixin):
     outputPaths: t.Set[str] = set()
-    name: str = None
 
     def __init__(
         self,

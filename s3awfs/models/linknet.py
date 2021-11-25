@@ -1,9 +1,9 @@
 import os.path
+import typing as t
 from functools import lru_cache
-import logging
 
+import pandas as pd
 import tensorflow as tf
-tf.get_logger().setLevel(logging.ERROR)
 import tensorflow.keras.backend as K
 from tensorflow.keras import Input
 from tensorflow.keras.layers import (
@@ -18,8 +18,12 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.metrics import MeanIoU
 from tensorflow.keras.models import Model
 from tensorflow.keras.models import load_model
-from utilitys import ProcessIO
 
+from utilitys import ProcessIO
+from utilitys.typeoverloads import FilePath
+from .tensorflow import TensorflowTrainingWorkflow
+from ..tvtsplit import TrainValidateTestSplitWorkflow
+from ..utils import NestedWorkflow
 
 def focal_tversky_loss(Y_true, Y_predicted, gamma = 0.75):
     ti = tversky_index(Y_true, Y_predicted)
@@ -235,3 +239,34 @@ def loadLinknetModel(file, strategy=None):
     with strategy.scope():
        model = load_model(file, custom_objects=customObjects)
     return ProcessIO(strategy=strategy, model=model)
+
+class LinkNetTrainingWorkflow(NestedWorkflow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.addFunction(makeLinknetModel)
+        self.tensorWf = self.addWorkflow(TensorflowTrainingWorkflow)
+
+    def loadAndTestModel(
+        self,
+        testImagePaths: t.Sequence[FilePath]=None,
+        modelFile: FilePath=None,
+        outputDir=None
+    ):
+        if modelFile:
+            modelFile = self.workflowDir / modelFile
+        else:
+            modelFile = self.tensorWf.savedModelFile
+
+        model = loadLinknetModel(modelFile)['model']
+        if testImagePaths:
+            self.tensorWf.savedModelFile(model, testImagePaths, outputDir)
+        return model
+
+    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, outputDir=None):
+        classInfoFile = self.parent.get(TrainValidateTestSplitWorkflow).classInfoFile
+        if numClasses is None and classInfoFile.exists():
+            numClasses = len(pd.read_csv(classInfoFile, usecols=['label']))
+        model = makeLinknetModel(numClasses, weightsFile=weightsFile)['model']
+        if testImagePaths is not None and len(testImagePaths):
+            self.tensorWf.savePredictions(model, testImagePaths, outputDir=outputDir)
+        return model

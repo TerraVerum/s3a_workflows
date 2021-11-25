@@ -18,7 +18,6 @@ from tqdm import tqdm
 from utilitys import fns, ProcessIO
 from utilitys.typeoverloads import FilePath
 
-from s3awfs.models.linknet import loadLinknetModel, makeLinknetModel
 from s3awfs.png import PngExportWorkflow
 from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
 from s3awfs.utils import WorkflowDir, RegisteredPath
@@ -297,28 +296,3 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             )
             values_df.to_csv(csv_path)
         return values_df
-
-    def loadAndTestModel(
-        self,
-        testImagePaths: t.Sequence[FilePath]=None,
-        modelFile: FilePath=None,
-        outputDir=None
-    ):
-        if modelFile:
-            modelFile = self.workflowDir / modelFile
-        else:
-            modelFile = self.savedModelFile
-
-        model = loadLinknetModel(modelFile)['model']
-        if testImagePaths:
-            self.savePredictions(model, testImagePaths, outputDir)
-        return model
-
-    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, outputDir=None):
-        classInfoFile = self.parent.get(TrainValidateTestSplitWorkflow).classInfoFile
-        if numClasses is None and classInfoFile.exists():
-            numClasses = len(pd.read_csv(classInfoFile, usecols=['label']))
-        model = makeLinknetModel(numClasses, weightsFile=weightsFile)['model']
-        if testImagePaths is not None and len(testImagePaths):
-            self.savePredictions(model, testImagePaths, outputDir=outputDir)
-        return model

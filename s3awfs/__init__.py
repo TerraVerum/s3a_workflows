@@ -13,6 +13,7 @@ wfModules  = [
     'tvtsplit.TrainValidateTestSplitWorkflow',
     'imagefeats.FeatureTransformerWorkflow',
     'models.tensorflow.TensorflowTrainingWorkflow',
+    'models.linknet.LinkNetTrainingWorkflow',
 ]
 def allWorkflows():
     ret = {}
