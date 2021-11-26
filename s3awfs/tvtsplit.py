@@ -49,27 +49,30 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             'viridis': self.rgbMasksDir
         }
 
-        for mask, filename in zip(labelMaskFiles, outputNames):
-            for cmap in {*maskColors, None}:
-                if cmap in cmapDirMapping:
-                    dir_ = cmapDirMapping[cmap]
-                elif cmap in pg.colormap.listMaps():
-                    dir_ = self.rgbMasksDir
-                else:
-                    continue
-                if not (dir_/filename).exists():
-                    # Don't fetch inside "generate" to avoid re-reading the same mask every iteration. Out here,
-                    # a numpy mask can be loaded over the filename
-                    mask = resolver.getMaybeResolve(mask)
-                    resolver.generateColoredMask(mask, dir_/filename, resolver.numClasses, cmap, resolve=False)
+        for cmap in {*maskColors, None}:
+            if cmap in cmapDirMapping:
+                dir_ = cmapDirMapping[cmap]
+            elif cmap in pg.colormap.listMaps():
+                dir_ = self.rgbMasksDir
+            else:
+                continue
+            outputToMaskNameMap = dict(zip(outputNames, labelMaskFiles))
+            existingNames = {f.name for f in dir_.glob('*.*')}
+            toGenerate = set(outputToMaskNameMap).difference(existingNames)
+            for filename in toGenerate:
+                mask = resolver.getMaybeResolve(outputToMaskNameMap[filename])
+                # Don't fetch inside "generate" to avoid re-reading the same mask every iteration. Out here,
+                # a numpy mask can be loaded over the filename
+                resolver.generateColoredMask(mask, dir_ / filename, resolver.numClasses, cmap, resolve=False)
 
     @staticmethod
     def _getNewAndDeleteUnusedImages(shouldExist: t.Sequence[str], folder: Path):
-        existing = np.array([im.name for im in folder.glob('*.png')])
-        for file in np.setdiff1d(existing, shouldExist):
+        existing = {im.name for im in folder.glob('*.png')}
+        shouldExist = set(shouldExist)
+        for file in existing.difference(shouldExist):
             # These already exist, but shouldn't under the present mapping
             os.unlink(os.path.join(folder, file))
-        return np.setdiff1d(shouldExist, existing)
+        return shouldExist.difference(existing)
 
 class TrainValidateTestSplitWorkflow(WorkflowDir):
     resolver = AliasedMaskResolver()
