@@ -19,19 +19,18 @@ primitive:
       testPct: 0.01 # Lots of unannotated images on which to test
       replace: false
       maxTestSamps: null
-      maskColors: [ null ] # Don't generate overlays/rescaled masks to save time\
+      maskColors: [ null ] # Don't generate overlays/rescaled masks to save time
 
   LinkNet Training:
-    - s3awfs.models.tensorflow.train.makeTensorflowStrategy
+    - s3awfs.models.tensorflow.train.makeTensorflowStrategy:
+      disabled: True # Enable and add "devices" for custom gpu training
     - s3awfs.models.linknet.makeLinknetModel
     - s3awfs.models.tensorflow.train.TensorflowTrainingWorkflow:
-      learningRate: 0.001
-      batchSize: 12
-      epochs: 1000
-      tensorboardUpdatesPerEpoch: 0
-      predictionDuringTrainPath:
-      computeDevices:
-        - /gpu:1
+        learningRate: 0.001
+        batchSize: 12
+        epochs: 1000
+        tensorboardUpdatesPerEpoch: 0
+        predictionDuringTrainPath:
 top:
   Data Generation:
     - Create Directories
@@ -45,7 +44,5 @@ top:
     - datagen
     - LinkNet Training:
         convertMasksToBbox: True
-        computeDevices:
-          - /gpu:0
 modules:
 - s3awfs.utils
