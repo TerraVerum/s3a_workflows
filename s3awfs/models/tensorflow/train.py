@@ -27,6 +27,9 @@ from .datagen import (
     SquareMaskSequenceDataGenerator
 )
 
+def makeTensorflowStrategy(strategyClass='MirroredStrategy', devices=('/cpu:0',)):
+    strat = getattr(tf.distribute, strategyClass)
+    return ProcessIO(strategy=strat(devices))
 
 class TensorflowTrainingWorkflow(WorkflowDir):
     # Generated during workflow
@@ -95,11 +98,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         if convertMasksToBbox:
             workers = 1
 
-        if strategy is None:
-            if workers > 1:
-                strategy = tf.distribute.MultiWorkerMirroredStrategy()
-            else:
-                strategy = tf.distribute.MirroredStrategy()
+        strategy = strategy or tf.distribute.get_strategy()
         tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []

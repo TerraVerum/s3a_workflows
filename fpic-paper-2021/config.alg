@@ -22,6 +22,7 @@ primitive:
       maskColors: [ null ] # Don't generate overlays/rescaled masks to save time\
 
   LinkNet Training:
+    - s3awfs.models.tensorflow.train.makeTensorflowStrategy
     - s3awfs.models.linknet.makeLinknetModel
     - s3awfs.models.tensorflow.train.TensorflowTrainingWorkflow:
       learningRate: 0.001

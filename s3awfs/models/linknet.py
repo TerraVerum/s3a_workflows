@@ -211,7 +211,7 @@ def makeLinknetModel(
     Creates a h5 model file for the specified input layer topology. Optionally, a weights file can be specified
     to preset layer weights
     """
-    strategy = strategy or tf.distribute.MirroredStrategy()
+    strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
         model = LinkNet(imageShape, numClasses, dropout).model
         meanIou = MeanIoU(num_classes=numClasses)
