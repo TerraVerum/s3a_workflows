@@ -31,6 +31,7 @@ class PngExportWorkflow(WorkflowDir):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.compositor = widgets.MaskCompositor()
+        self.compositor.propertiesProc(colormap=constants.DEFAULT_RGB_CMAP)
 
     def runWorkflow(
         self,
