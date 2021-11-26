@@ -125,6 +125,7 @@ class MainWorkflow(NestedWorkflow):
 
         if run:
             proc.run()
+        return proc
 
     @classmethod
     @wraps(fromConfig)
