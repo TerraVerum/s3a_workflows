@@ -238,7 +238,9 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         try:
             tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
             pngWf = self.parent.get(PngExportWorkflow)
-            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label']
+            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label'].drop_duplicates()
+            # 0 is background but will appear in the label map
+            labelMap = labelMap.drop(index=0)
         except (FileNotFoundError, KeyError, AttributeError):
             # Labelmap doesn't exist / parent not specified
             pngWf = PngExportWorkflow('')
@@ -256,7 +258,10 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
             outFile = outputDir.joinpath(os.path.basename(file)).with_suffix('.jpg')
-            pngWf.overlayMaskOnImage(img[0], prediction, labelMap, outFile)
+            oldMap = pngWf.compositor.labelToNameMapping
+            pngWf.compositor.updateLabelMap(labelMap)
+            pngWf.overlayMaskOnImage(img[0], prediction, outFile)
+            pngWf.compositor.updateLabelMap(oldMap)
         compositorProps.run(**oldSettings)
         if legendVisible is not None:
             pngWf.compositor.legend.setVisible(legendVisible)
