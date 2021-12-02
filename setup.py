@@ -34,6 +34,9 @@ setup(
   version=__version__,
   package_dir={'s3awfs':'s3awfs'},
   packages=find_packages(),
+  extras_require={
+      'full': ['tensorflow>=2.0', 'tensorboard']
+  },
   install_requires=required,
   include_package_data=True,
   url='https://gitlab.com/ficsresearch/s3a-workflows',
