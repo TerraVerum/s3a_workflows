@@ -21,7 +21,7 @@ from tensorflow.keras.models import load_model
 
 from utilitys import ProcessIO
 from utilitys.typeoverloads import FilePath
-from .tensorflow import TensorflowTrainingWorkflow
+from .tensorflow import TensorflowTrainingWorkflow, makeTensorflowStrategy
 from ..tvtsplit import TrainValidateTestSplitWorkflow
 from ..utils import NestedWorkflow
 
@@ -235,16 +235,23 @@ def loadLinknetModel(file, strategy=None):
     :param strategy: Tensorflow strategy, can be set with ``makeTensorflowStrategy``
     ignore: True
     """
-    strategy = strategy or tf.distribute.MirroredStrategy()
+    strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
        model = load_model(file, custom_objects=customObjects)
     return ProcessIO(strategy=strategy, model=model)
 
 class LinkNetTrainingWorkflow(NestedWorkflow):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, name=None, **kwargs):
+        super().__init__(folder='')
+        self.addFunction(makeTensorflowStrategy)
         self.addFunction(makeLinknetModel)
-        self.tensorWf = self.addWorkflow(TensorflowTrainingWorkflow)
+        # Remove Tf training's directory since extra nesting is unnecessary
+        self.addWorkflow(TensorflowTrainingWorkflow, name=name, folder='', **kwargs)
+
+    @property
+    def tensorWf(self):
+        # Use as property to reference the correct value after copies
+        return self.get(TensorflowTrainingWorkflow)
 
     def loadAndTestModel(
         self,

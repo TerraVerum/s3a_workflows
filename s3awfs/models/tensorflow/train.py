@@ -51,7 +51,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         initialEpoch=0,
         workers=1,
         bufferSize=1000,
-        tensorboardUpdatesPerEpoch=5,
+        tensorboardUpdatesPerEpoch=0,
         strategy=None,
         convertMasksToBbox=False
     ):

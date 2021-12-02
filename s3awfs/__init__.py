@@ -30,3 +30,5 @@ def getWorkflow(moduleStr, returnName=False):
     if returnName:
         return wfCls, name
     return wfCls
+
+from .main import MainWorkflow

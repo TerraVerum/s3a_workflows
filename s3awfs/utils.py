@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import inspect
 import os.path
 import re
@@ -83,9 +84,6 @@ class WorkflowMixin:
         folder: Path|str=None,
         parent: NestedWorkflow=None
     ):
-        # Account for case where process was formed from "parseFromQualname"
-        if isinstance(folder, str) and self.__module__ in folder:
-            folder = fns.pascalCaseToTitle(folder.split('.')[-1].replace('Workflow', ''))
         self.localFolder = Path(folder or '')
         self.parent = parent
 
@@ -222,19 +220,25 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
             if not wf.disabled and isinstance(wf, Workflow_T):
                 wf.createDirs(excludeExprs)
 
-    def get(self, wfClass: t.Type[T], missingOk=True) -> T:
-        # Preferentially find the missing stage closest to 'self', checking higher and higher parent levles
-        outerProc = self
-        visited = set()
-        # TODO: Need good way to prefer `get`ting stages closer to 'self's level
-        while outerProc:
-            for stage in set(outerProc.stages_flattened).difference(visited):
-                if isinstance(stage, wfClass):
-                    return stage
-                visited.add(stage)
-            outerProc = outerProc.parent
+
+    def _getFromRoot(self, root: Workflow_T, wfClassorName):
+        # TODO: Prefer stages closer to requesting process
+        if isinstance(root, wfClassorName) or root.name == wfClassorName:
+            return root
+        for stage in root:
+            if ret := self._getFromRoot(stage, wfClassorName):
+                return ret
+        # No matches anywhere in the tree
+        return None
+
+    def get(self, wfClass: t.Type[T] | str, missingOk=True) -> T:
+        root = self
+        while root.parent is not None:
+            root = root.parent
+        if match := self._getFromRoot(root, wfClass):
+            return match
         # Stage not present already; add at self's level
-        if missingOk:
+        if missingOk and not isinstance(wfClass, str):
             stage = self.addWorkflow(wfClass)
             stage.disabled = True
             return stage

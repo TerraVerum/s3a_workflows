@@ -5,12 +5,10 @@ from functools import wraps
 from pathlib import Path
 
 from s3a.parameditors.algcollection import AlgCollection
-from s3awfs.utils import WorkflowEditor
+from . import getWorkflow, wfModules, constants
+from .utils import WorkflowEditor, NestedWorkflow, Workflow_T
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
-
-import s3awfs
-from s3awfs import NestedWorkflow, Workflow_T, constants, wfModules
 
 
 class MainWorkflow(NestedWorkflow):
@@ -98,7 +96,7 @@ class MainWorkflow(NestedWorkflow):
             folder = Path(config).parent
         if config is None:
             config = folder/'config.alg'
-        editor = AlgCollection(
+        editor = WorkflowProcClctn(
             procType=NestedWorkflow,
             procEditorType=WorkflowEditor
         ).createProcessorEditor(str(folder))
@@ -194,7 +192,7 @@ class MainWorkflow(NestedWorkflow):
             # Otherwise, a list comprehension could be used
             match = wfClass = None
             for maybeMatchModule in wfModules:
-                wfClass, matchName = s3awfs.getWorkflow(maybeMatchModule, returnName=True)
+                wfClass, matchName = getWorkflow(maybeMatchModule, returnName=True)
                 matchName = nameFormatter(matchName)
                 if stageName in matchName:
                     match = wfClass
@@ -216,4 +214,12 @@ class MainWorkflow(NestedWorkflow):
         return ret
 
 class WorkflowProcClctn(AlgCollection):
-    pass
+    @classmethod
+    def _deepCopyProcShallowCopyIo(cls, proc):
+        proc = super()._deepCopyProcShallowCopyIo(proc)
+        if isinstance(proc, NestedWorkflow):
+            for stage in proc.stages:
+                if isinstance(stage, Workflow_T):
+                    stage.parent = proc
+        return proc
+
