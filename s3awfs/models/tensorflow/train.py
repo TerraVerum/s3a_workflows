@@ -27,7 +27,7 @@ from .datagen import (
     SquareMaskSequenceDataGenerator
 )
 
-def makeTensorflowStrategy(strategyClass='MirroredStrategy', devices=('/cpu:0',)):
+def makeTensorflowStrategy(strategyClass='OneDeviceStrategy', devices='/cpu:0'):
     strat = getattr(tf.distribute, strategyClass)
     return ProcessIO(strategy=strat(devices))
 
