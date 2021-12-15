@@ -243,10 +243,10 @@ def loadLinknetModel(file, strategy=None):
 class LinkNetTrainingWorkflow(NestedWorkflow):
     def __init__(self, name=None, **kwargs):
         super().__init__(folder='')
-        self.addFunction(makeTensorflowStrategy)
-        self.addFunction(makeLinknetModel)
+        self.addFunction(makeTensorflowStrategy, interactive=False)
+        self.addFunction(makeLinknetModel, interactive=False)
         # Remove Tf training's directory since extra nesting is unnecessary
-        self.addWorkflow(TensorflowTrainingWorkflow, name=name, folder='', **kwargs)
+        self.addWorkflow(TensorflowTrainingWorkflow, interactive=False, name=name, folder='', **kwargs)
 
     @property
     def tensorWf(self):
