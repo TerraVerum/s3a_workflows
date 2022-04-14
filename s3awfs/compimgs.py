@@ -74,8 +74,12 @@ class ComponentImagesWorkflow(WorkflowDir):
         Turns a csv annotation of a single image into a dataframe of cropped components from that image
         """
         srcDir = Path(srcDir)
-        csvDf = self.io.importCsv(file)
+        csvDf = self.io.importCsv(file, keepExtraColumns=True)
         mapping = self.createGetLabelMapping()
+        labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
+        if isinstance(labelCol, str):
+            labelColAsParam = PrjParam(labelCol, '')
+            csvDf = csvDf.rename(columns={labelCol: labelColAsParam})
         csvDf.columns[csvDf.columns.get_loc(self.labelField)].opts['limits'] = mapping.to_list()
         if resizeOpts is None or 'shape' not in resizeOpts:
             raise ValueError('Must pass at least a dictionary with `shape` info when creating component image exports')
