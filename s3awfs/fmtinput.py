@@ -67,7 +67,7 @@ class FormattedInputWorkflow(WorkflowDir):
 
     def _maybeCreateAugmentations(self, originalVerts, imageFile):
         augmentOpts = (self.input.get('augmentationOpts') or {}).copy()
-        if not augmentOpts:
+        if not augmentOpts or np.isclose(augmentOpts.get('fraction', 0.0), 0):
             return None
         originalVerts = compio.helpers.deserialize(RTF.VERTICES, originalVerts, returnErrs=False)
         numComps = len(originalVerts)
