@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from s3a import ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, PRJ_ENUMS
-from s3a.generalutils import pd_iterdict
 from utilitys import fns, PrjParam
 from utilitys.typeoverloads import FilePath
 
@@ -112,7 +111,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             useKwargs = kwargs.copy()
             useKwargs['resizeOpts'] = {**resizeOpts, 'rotationDeg': PRJ_ENUMS.ROT_OPTIMAL}
             # Need to populate all fields in case label is an extra column
-            augmentedDf = self.io.importCsv(augmented)
+            augmentedDf = self.io.importCsv(augmented, keepExtraColumns=True)
             if not len(augmentedDf):
                 if returnDf:
                     return originalExport
@@ -157,7 +156,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         df['rotated'] = False
 
-        for (idx, row), verts in zip(pd_iterdict(df, index=True), vertices):
+        for (idx, row), verts in zip(df.iterrows(), vertices):
             *rect, _orient = cv.minAreaRect(verts.stack())
             rotPoints = cv.boxPoints((*rect, _orient - row['rotation']))
             xySpan = np.ptp(rotPoints, axis=0)
@@ -171,7 +170,7 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def createMultipleCompImgs(self, fullImagesDir, inputFiles):
         # Save to intermediate directory first to avoid multiprocess comms bandwidth issues
-        fns.mproc_apply(
+        fns.mprocApply(
             self.createCompImgsDfSingle,
             inputFiles,
             srcDir=fullImagesDir,

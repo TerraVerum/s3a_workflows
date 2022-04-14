@@ -52,7 +52,7 @@ class PngExportWorkflow(WorkflowDir):
         else:
             newFiles = fns.naturalSorted(files)
 
-        fns.mproc_apply(
+        fns.mprocApply(
             self._exportSinglePcbImage,
             newFiles,
             descr="Exporting Png Files",
@@ -74,7 +74,7 @@ class PngExportWorkflow(WorkflowDir):
         outDf['imageFile'] = compImgsFile.with_suffix('.png').name
 
         exportedImgs = []
-        for index, row in gutils.pd_iterdict(outDf, index=True):
+        for index, row in outDf.iterrows():
             imageName = self._exportSingleComp(index, row)
             exportedImgs.append(imageName)
         outDf['compImageFile'] = exportedImgs
@@ -92,7 +92,7 @@ class PngExportWorkflow(WorkflowDir):
             [self.imagesDir, self.labelMasksDir]
         ):
             saveName = dir_/exportName
-            gutils.cvImsave_rgb(saveName, row[retKey])
+            gutils.cvImsaveRgb(saveName, row[retKey])
 
         return exportName
 
@@ -125,7 +125,7 @@ class PngExportWorkflow(WorkflowDir):
         if showProgress:
             imgList = tqdm(imgList, 'Creating Overlays')
         for img in imgList:
-            mask = gutils.cvImread_rgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
+            mask = gutils.cvImreadRgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
             outputFile = self.overlaysDir / img.with_suffix('.jpg').name
             self.overlayMaskOnImage(img, mask, outputFile)
         self.compositor.propertiesProc(**oldProps)

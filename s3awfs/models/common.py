@@ -68,7 +68,7 @@ class EpochEvolutionViewer(widgets.ImageViewer):
         drawitem = widgets.MaskCompositor()
         for epoch in p['selectedEpoch'].opts['limits'].values():
             imageFile = epoch/selected
-            im = gutils.cvImread_rgb(imageFile)
+            im = gutils.cvImreadRgb(imageFile)
             if im is None:
                 continue
             if epochAsText:

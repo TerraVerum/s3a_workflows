@@ -140,7 +140,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
                 {'dir': dir_, 'data': data}
             )
 
-        fns.mproc_apply(
+        fns.mprocApply(
             self._exportDatatypePortion,
             datasets,
             extraArgs=(exportWf,),

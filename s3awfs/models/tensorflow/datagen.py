@@ -94,20 +94,20 @@ class SequenceDataGenerator(Sequence):
         images = np.empty((len(image_names), *self.imageShape), dtype=np.uint8)
         masks = np.empty((len(image_names), *self.imageShape[:2], num_classes), dtype=np.uint8)
         for index, imageFile in enumerate(image_names):
-            img = gutils.cvImread_rgb(self.imagesDir / imageFile, cv.IMREAD_UNCHANGED)
+            img = gutils.cvImreadRgb(self.imagesDir / imageFile, cv.IMREAD_UNCHANGED)
             mask = self.getMask(imageFile)
             images[index, ...] = img
             masks[index, ...] = mask
         return images, masks
 
     def getMask(self, maskName):
-        mask = gutils.cvImread_rgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
+        mask = gutils.cvImreadRgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
         mask = to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
         return mask
 
 class SquareMaskSequenceDataGenerator(SequenceDataGenerator):
     def getMask(self, maskName):
-        mask = gutils.cvImread_rgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
+        mask = gutils.cvImreadRgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
         if self.numOutputClasses > 2:
             raise ValueError('Square mask only works with binary initial labels')
         for region in regionprops(label(mask)):

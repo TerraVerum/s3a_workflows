@@ -1,4 +1,4 @@
-s3a>=0.5.2
+s3a>=0.6.0
 utilitys>=0.4.4
 scikit-learn
 imageio

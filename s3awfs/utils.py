@@ -255,7 +255,7 @@ def argparseHelpAction(nested: NestedWorkflow):
 
         def __call__(self, parser, *args, **kwargs) -> None:
             state = {}
-            for stage in nested.stages_flattened:
+            for stage in nested.stagesFlattened:
                 pgDict = fns.funcToParamDict(stage.func)
                 for child in pgDict['children']:
                     state[child['name']] = child
@@ -345,12 +345,12 @@ class AliasedMaskResolver:
         """
         labelMask = self.getMaybeResolve(labelMask, resolve=resolve)
         if colorMap is None:
-            gutils.cvImsave_rgb(outputFile, labelMask)
+            gutils.cvImsaveRgb(outputFile, labelMask)
             return
         if colorMap == 'binary':
             # No need to use colormap -- just force high values on save
             # Values > 1 should all clip to 255
-            gutils.cvImsave_rgb(outputFile, (labelMask > 0).astype('uint8') * 255)
+            gutils.cvImsaveRgb(outputFile, (labelMask > 0).astype('uint8') * 255)
             return
         if numClasses is None:
             numClasses = np.max(labelMask)
@@ -361,7 +361,7 @@ class AliasedMaskResolver:
 
     def getMaybeResolve(self, mask: FilePath | np.ndarray, resolve=True):
         if isinstance(mask, FilePath.__args__):
-            mask = gutils.cvImread_rgb(self.masksDir/mask, cv.IMREAD_UNCHANGED)
+            mask = gutils.cvImreadRgb(self.masksDir/mask, cv.IMREAD_UNCHANGED)
         # Only keep known labels
         if not resolve:
             return mask

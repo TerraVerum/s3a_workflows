@@ -91,7 +91,7 @@ class RegionPropertiesWorkflow(WorkflowDir):
             useFeatures = propNames
         generated = {f.stem for f in self.regionpropFeaturesDir.glob('*.*')}
         newFiles = fns.naturalSorted(f for f in self.parent.get(FormattedInputWorkflow).formattedFiles if f.stem not in generated)
-        fns.mproc_apply(
+        fns.mprocApply(
             self.textAnnToRegionpropsCsv,
             newFiles,
             useFeatures=useFeatures,

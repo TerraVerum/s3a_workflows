@@ -253,7 +253,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         oldSettings = dict(compositorProps.input)
         compositorProps.run(opacity=0.7)
         for file in tqdm(testImagePaths, desc=f"Saving Predictions to {outputDir}"):
-            img = gutils.cvImread_rgb(file, cv.IMREAD_UNCHANGED)
+            img = gutils.cvImreadRgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)

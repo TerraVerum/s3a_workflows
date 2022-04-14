@@ -6,7 +6,7 @@ import pickle
 import cv2 as cv
 import numpy as np
 import pandas as pd
-from s3a.generalutils import cvImread_rgb
+from s3a.generalutils import cvImreadRgb
 from sklearn.decomposition import IncrementalPCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from tqdm import tqdm
@@ -128,7 +128,7 @@ class BatchGenerator:
         output = np.empty((self.batchSize, self.raveledSize), dtype='float32')
         counter = 0
         for image in self.allImages:
-            im = cvImread_rgb(image, cv.IMREAD_UNCHANGED)
+            im = cvImreadRgb(image, cv.IMREAD_UNCHANGED)
             if self.grayscale and im.ndim > 2:
                 im = im.mean(2).astype(im.dtype)
             output[counter, :] = cv.resize(im[...,:3], self.outputShape[::-1]).ravel()
