@@ -258,7 +258,11 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             sampler = lambda el: el.sample(n=sampSize, replace=True)
         else:
             sampler = lambda el: el.sample(n=min(len(el), sampSize))
-        summaryDf = grouped.apply(sampler).droplevel(groupCol)
+        summaryDf = grouped.apply(sampler)
+        # Most of the time, a MultiIndex will be formed. There are edge cases when
+        # e.g. sampleSize is 1, which avoids MultiIndex results for some reason
+        if groupCol in summaryDf.index.names:
+            summaryDf = summaryDf.droplevel(groupCol)
         return summaryDf
 
     def _addTrainValTestInfo(self, summaryDf, fullSummaryDf):
@@ -282,7 +286,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             if maxTest and len(testComps) > maxTest:
                 testComps = testComps.sample(n=maxTest)
             trainTemp = summaryDf.index
-            summaryDf = summaryDf.append(testComps)
+            summaryDf = pd.concat([summaryDf, testComps])
             testIds = testComps.index
         else:
             nonAugmentedIds = unaugmented(summaryDf).index.to_numpy()
