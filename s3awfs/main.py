@@ -117,7 +117,7 @@ class MainWorkflow(NestedWorkflow):
             proc.updateInput(**kwargs)
 
         if writeConfig is None:
-            writeConfig = saveName.parent != proc.workflowDir
+            writeConfig = saveName.parent.resolve() != proc.workflowDir.resolve()
         if writeConfig:
             editor.saveParamValues(proc.workflowDir / saveName.name)
 
