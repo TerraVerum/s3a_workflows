@@ -3,7 +3,7 @@ primitive:
   - s3awfs.fmtinput.FormattedInputWorkflow:
       annotationsPath #: csv annotation file or folder
       augmentationOpts:
-        fraction: 1.5
+        fraction: 0.0 # Will add "fraction*numrows" augmentations, may be >1
         rotationPct: 0.4
   - s3awfs.compimgs.ComponentImagesWorkflow:
       imagesPath #: Folder of full-size images
