@@ -8,4 +8,6 @@ DEBUG = True
 
 DEFAULT_RGB_CMAP = "PAL-relaxed_bright"
 
+DUMMY_FGND_VALUE = "FGND"
+
 RNG = np.random.default_rng()

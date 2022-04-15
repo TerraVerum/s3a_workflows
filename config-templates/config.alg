@@ -7,7 +7,7 @@ primitive:
         rotationPct: 0.4
   - s3awfs.compimgs.ComponentImagesWorkflow:
       imagesPath #: Folder of full-size images
-      labelField: Designator
+      labelField: null #: Field to use as a color for mask export. Null is a binary mask
       s3aProj #: S3A project that knows how to deserialize component data
       resizeOpts:
         shape: [512, 512]

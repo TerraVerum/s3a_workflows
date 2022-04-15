@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import typing as t
 import warnings
 from pathlib import Path
@@ -30,7 +31,8 @@ class ComponentImagesWorkflow(WorkflowDir):
     allLabelsFile = RegisteredPath(".csv")
     compImgsFile = RegisteredPath(".pkl")
 
-    labelField: PrjParam | str = None
+    labelField: PrjParam | str | None = None
+    hasDummyLabel: bool
 
     def __init__(self, *args, **kwargs):
 
@@ -57,14 +59,20 @@ class ComponentImagesWorkflow(WorkflowDir):
                 self.allLabelsFile, index_col="numeric_label", na_filter=False
             )["label"]
         imagesPath = Path(self.input["imagesPath"])
-        labelsSer = pd.concat(
-            [
-                pd.read_csv(f, na_filter=False)[str(self.labelField)]
-                for f in self.parent.get(FormattedInputWorkflow).formattedFiles
-                if len(list(imagesPath.glob(f.stem + "*")))
-            ]
-        )
-        limitsCounts = labelsSer.value_counts()
+
+        if self.hasDummyLabel:
+            labelsSer = pd.Series(
+                [constants.DUMMY_FGND_VALUE], dtype=type(constants.DUMMY_FGND_VALUE)
+            )
+        else:
+            labelsSer = pd.concat(
+                [
+                    pd.read_csv(f, na_filter=False)[str(self.labelField)]
+                    for f in self.parent.get(FormattedInputWorkflow).formattedFiles
+                    if len(list(imagesPath.glob(f.stem + "*")))
+                ]
+            )
+        limitsCounts = labelsSer.value_counts().sort_index()
 
         infoDf = pd.DataFrame(
             np.c_[limitsCounts.index, limitsCounts.values], columns=["label", "count"]
@@ -79,15 +87,16 @@ class ComponentImagesWorkflow(WorkflowDir):
         Turns a csv annotation of a single image into a dataframe of cropped components from that image
         """
         srcDir = Path(srcDir)
-        csvDf = self.io.importCsv(file, keepExtraColumns=True)
+        csvDf = self.io.importCsv(file, keepExtraFields=True, addMissingFields=True)
         mapping = self.createGetLabelMapping()
+
         labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
         if isinstance(labelCol, str):
             labelColAsParam = PrjParam(labelCol, "")
             csvDf = csvDf.rename(columns={labelCol: labelColAsParam})
-        csvDf.columns[csvDf.columns.get_loc(self.labelField)].opts[
-            "limits"
-        ] = mapping.to_list()
+            labelCol = labelColAsParam
+        # Limits can always be set, since they will be ignored where not used
+        labelCol.opts.setdefault("limits", mapping.to_list())
         if resizeOpts is None or "shape" not in resizeOpts:
             raise ValueError(
                 "Must pass at least a dictionary with `shape` info when creating component image exports"
@@ -100,6 +109,13 @@ class ComponentImagesWorkflow(WorkflowDir):
                 stacklevel=2,
             )
             return
+        if len(imageFiles) > 1:
+            imageNames = [im.name for im in imageFiles]
+            warnings.warn(
+                f"{file.name} matched multiple images: {imageNames}. Choosing {imageNames[0]}.",
+                UserWarning,
+                stacklevel=2,
+            )
         imageFile = imageFiles[0]
         stats = Image.open(imageFile)
         labelMask, numericMapping = self.io.exportLblPng(
@@ -135,7 +151,7 @@ class ComponentImagesWorkflow(WorkflowDir):
                 "rotationDeg": PRJ_ENUMS.ROT_OPTIMAL,
             }
             # Need to populate all fields in case label is an extra column
-            augmentedDf = self.io.importCsv(augmented, keepExtraColumns=True)
+            augmentedDf = self.io.importCsv(augmented, keepExtraFields=True)
             if not len(augmentedDf):
                 if returnDf:
                     return originalExport
@@ -154,6 +170,21 @@ class ComponentImagesWorkflow(WorkflowDir):
 
         if returnDf:
             return originalExport
+
+    @staticmethod
+    def _generateUniqueDummyParam(tableData):
+        # Prevent any chance of overwriting data by guaranteeing a unique
+        # column name for dummy data
+        # Simply ensure there are enough underscores to be the longest new column name
+        maxColLen = max(len(str(c)) for c in tableData.allFields) + 1
+        labelField = PrjParam("dummylabel", constants.DUMMY_FGND_VALUE)
+        numUnderscoresNeeded = math.ceil(max(0, maxColLen - len(labelField.name)) / 2)
+        underscorePreSuff = "".join("_" for _ in range(numUnderscoresNeeded))
+        labelField.name = f"{underscorePreSuff}{labelField.name}{underscorePreSuff}"
+
+        # Force this field to exist when new data is read
+        tableData.addField(labelField)
+        return labelField
 
     def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
         exported = self.io.exportCompImgsDf(df, **kwargs, **extraKwargs)
@@ -251,12 +282,11 @@ class ComponentImagesWorkflow(WorkflowDir):
             if isinstance(s3aProj, FilePath.__args__):
                 s3aProj = fns.attemptFileLoad(s3aProj)
             self.io.tableData.loadCfg(cfgDict=s3aProj)
-        if labelField is not None:
+        self.hasDummyLabel = labelField is None
+        if self.hasDummyLabel:
+            self.labelField = self._generateUniqueDummyParam(self.io.tableData)
+        else:
             self.labelField = self.io.tableData.fieldFromName(labelField)
-        if not self.labelField:
-            raise ValueError(
-                "A label field must be selected before images can be exported"
-            )
 
         files = self.parent.get(FormattedInputWorkflow).formattedFiles
 
