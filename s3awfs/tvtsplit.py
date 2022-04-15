@@ -16,7 +16,8 @@ from . import constants
 from .png import PngExportWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, getLinkFunc
 
-_defaultMaskColors = (None, 'binary', constants.DEFAULT_RGB_CMAP)
+_defaultMaskColors = (None, "binary", constants.DEFAULT_RGB_CMAP)
+
 
 class LabelMaskResolverWorkflow(WorkflowDir):
     """
@@ -33,7 +34,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         resolver: AliasedMaskResolver,
         outputNames: t.Sequence[str] = None,
         maskColors=_defaultMaskColors,
-        maxNumericLabel: int=None,
+        maxNumericLabel: int = None,
         treatAsCache=False,
     ):
         if not len(labelMaskFiles):
@@ -106,29 +107,28 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
     resolver: AliasedMaskResolver
     maxNumericLabel: int
 
-    TRAIN_NAME = 'train'
-    VALIDATION_NAME = 'val'
-    TEST_NAME = 'test'
-
+    TRAIN_NAME = "train"
+    VALIDATION_NAME = "val"
+    TEST_NAME = "test"
 
     trainDir = RegisteredPath()
     validateDir = RegisteredPath()
     testDir = RegisteredPath()
 
-    filteredSummaryFile = RegisteredPath('.csv')
-    classInfoFile = RegisteredPath('.csv')
+    filteredSummaryFile = RegisteredPath(".csv")
+    classInfoFile = RegisteredPath(".csv")
 
     def runWorkflow(
         self,
         labelMap: pd.DataFrame | str | Path = None,
         balanceClasses=True,
-        balanceFunc='median',
+        balanceFunc="median",
         valPct=0.15,
         testPct=0.15,
         replace=False,
         testOnUnused=True,
         maxTestSamps=None,
-        maskColors=_defaultMaskColors
+        maskColors=_defaultMaskColors,
     ):
         """
         From a set of label and image files, forms train, validate, and test subsets.
@@ -157,47 +157,46 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             summary = self.createGetFilteredSummaryDf(
                 pd.read_csv(exportWf.summaryFile), labelMap
             )
-        self.maxNumericLabel = summary['numericLabel'].max()
+        self.maxNumericLabel = summary["numericLabel"].max()
         self.resolver = AliasedMaskResolver(labelMap)
         if self.resolver.hasClassInfo:
             self.resolver.classInfo.to_csv(self.classInfoFile)
 
         datasets = []
-        for dir_, typ in zip([self.trainDir, self.validateDir, self.testDir], [self.TRAIN_NAME, self.VALIDATION_NAME, self.TEST_NAME]):
-            data = summary[summary['dataType'] == typ]
-            datasets.append(
-                {'dir': dir_, 'data': data}
-            )
+        for dir_, typ in zip(
+            [self.trainDir, self.validateDir, self.testDir],
+            [self.TRAIN_NAME, self.VALIDATION_NAME, self.TEST_NAME],
+        ):
+            data = summary[summary["dataType"] == typ]
+            datasets.append({"dir": dir_, "data": data})
 
         fns.mprocApply(
             self._exportDatatypePortion,
             datasets,
             extraArgs=(exportWf,),
-            descr='Forming Train/Val/Test Sets',
-            debug=constants.DEBUG
+            descr="Forming Train/Val/Test Sets",
+            debug=constants.DEBUG,
         )
 
     def _exportDatatypePortion(self, dirAndData: dict, exportWf: PngExportWorkflow):
         PEW = PngExportWorkflow
         linkFunc = getLinkFunc()
-        destDir = dirAndData['dir']
-        df = dirAndData['data']
+        destDir = dirAndData["dir"]
+        df = dirAndData["data"]
         maskWf = LabelMaskResolverWorkflow(destDir, createDirs=True)
         # MaskWf generates colored, normal, and binary scaled masks
         maskWf.runWorkflow(
-            df['compImageFile'].apply(
-                lambda el: exportWf.labelMasksDir / el
-            ),
+            df["compImageFile"].apply(lambda el: exportWf.labelMasksDir / el),
             self.resolver,
-            maskColors=self.input['maskColors'],
+            maskColors=self.input["maskColors"],
             maxNumericLabel=self.maxNumericLabel,
-            treatAsCache=True
+            treatAsCache=True,
         )
 
         imageDir = destDir / PEW.imagesDir
         imageDir.mkdir(exist_ok=True)
-        keepImages = set(df['compImageFile'])
-        existing = {im.name for im in imageDir.glob('*.png')}
+        keepImages = set(df["compImageFile"])
+        existing = {im.name for im in imageDir.glob("*.png")}
         newImages = keepImages.difference(existing)
         toDelete = existing.difference(keepImages)
         for name in toDelete:
@@ -209,7 +208,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def createGetFilteredSummaryDf(self, summaryDf, labelInfoDf):
         filtered = self._filterByLabel(summaryDf, labelInfoDf)
-        if self.input.get('balanceClasses'):
+        if self.input.get("balanceClasses"):
             filtered = self._balanceClasses(filtered, labelInfoDf)
         filtered = self._addTrainValTestInfo(filtered, summaryDf)
 
@@ -220,34 +219,36 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         if labelMap is None:
             return None
         if not isinstance(labelMap, (pd.Series, pd.DataFrame)):
-            labelMap = pd.read_csv(labelMap, index_col='numeric_label')
-        if 'numeric_label' in labelMap.columns:
-            labelMap = labelMap.set_index('numeric_label')
+            labelMap = pd.read_csv(labelMap, index_col="numeric_label")
+        if "numeric_label" in labelMap.columns:
+            labelMap = labelMap.set_index("numeric_label")
         return labelMap
 
     @staticmethod
     def _filterByLabel(summaryDf, labelInfoDf):
         if labelInfoDf is None:
             # Valid if any label is present
-            membership = summaryDf['label'].notnull().to_numpy(bool)
+            membership = summaryDf["label"].notnull().to_numpy(bool)
         else:
-            membership = np.isin(summaryDf['numericLabel'], labelInfoDf.index)
+            membership = np.isin(summaryDf["numericLabel"], labelInfoDf.index)
         # Only train on expected labels
         summaryDf = summaryDf[membership]
         return summaryDf
 
     def _balanceClasses(self, summaryDf, labelInfoDf=None):
         if labelInfoDf is None:
-            groupCol = 'label'
+            groupCol = "label"
             # Populate 'groupCol' so outer access to this file can always use that column
-            summaryDf['groupCol'] = summaryDf['label']
+            summaryDf["groupCol"] = summaryDf["label"]
         else:
-            groupCol = 'labelGroup'
+            groupCol = "labelGroup"
             summaryDf = summaryDf.copy()
-            summaryDf[groupCol] = labelInfoDf.loc[summaryDf['numericLabel'], 'label'].to_numpy(str)
+            summaryDf[groupCol] = labelInfoDf.loc[
+                summaryDf["numericLabel"], "label"
+            ].to_numpy(str)
         grouped = summaryDf.groupby(groupCol)
-        sampSize = math.ceil(grouped.size().apply(self.input['balanceFunc']))
-        if self.input.get('replace'):
+        sampSize = math.ceil(grouped.size().apply(self.input["balanceFunc"]))
+        if self.input.get("replace"):
             sampler = lambda el: el.sample(n=sampSize, replace=True)
         else:
             sampler = lambda el: el.sample(n=min(len(el), sampSize))
@@ -255,21 +256,23 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         return summaryDf
 
     def _addTrainValTestInfo(self, summaryDf, fullSummaryDf):
-        testOnUnused = self.input.get('testOnUnused')
-        unaugmented = lambda df: df[~df['imageFile'].str.contains('augmented')]
+        testOnUnused = self.input.get("testOnUnused")
+        unaugmented = lambda df: df[~df["imageFile"].str.contains("augmented")]
         # Just to silence intellisense; unused will be set below
         unused = None
         if testOnUnused:
             # Don't dip into training data, instead use unclassified data from the full summary
-            unused = unaugmented(fullSummaryDf.loc[fullSummaryDf.index.difference(summaryDf.index)])
+            unused = unaugmented(
+                fullSummaryDf.loc[fullSummaryDf.index.difference(summaryDf.index)]
+            )
             if not len(unused):
                 # There is no unused data, so just use the training data as normal
                 testOnUnused = False
         # Check once more for training on unused since it may have changed
         if testOnUnused:
-            numSamps = min(len(unused), int(len(summaryDf)*self.input['testPct']))
+            numSamps = min(len(unused), int(len(summaryDf) * self.input["testPct"]))
             testComps = unused.sample(n=numSamps)
-            maxTest = self.input['maxTestSamps']
+            maxTest = self.input["maxTestSamps"]
             if maxTest and len(testComps) > maxTest:
                 testComps = testComps.sample(n=maxTest)
             trainTemp = summaryDf.index
@@ -277,20 +280,22 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             testIds = testComps.index
         else:
             nonAugmentedIds = unaugmented(summaryDf).index.to_numpy()
-            _, testIds = train_test_split(nonAugmentedIds, test_size=self.input['testPct'])
+            _, testIds = train_test_split(
+                nonAugmentedIds, test_size=self.input["testPct"]
+            )
             trainTemp = np.setdiff1d(summaryDf.index, testIds)
-        _, valIds = train_test_split(trainTemp, test_size=self.input['valPct'])
+        _, valIds = train_test_split(trainTemp, test_size=self.input["valPct"])
         # By default, those which aren't test or validate will be training
-        summaryDf['dataType'] = self.TRAIN_NAME
-        summaryDf.loc[testIds, 'dataType'] = self.TEST_NAME
-        summaryDf.loc[valIds, 'dataType'] = self.VALIDATION_NAME
+        summaryDf["dataType"] = self.TRAIN_NAME
+        summaryDf.loc[testIds, "dataType"] = self.TEST_NAME
+        summaryDf.loc[valIds, "dataType"] = self.VALIDATION_NAME
         return summaryDf
 
-    def createDirs(self, excludeExprs=('.',)):
+    def createDirs(self, excludeExprs=(".",)):
         super().createDirs(excludeExprs)
         for sub in PngExportWorkflow.imagesDir, PngExportWorkflow.labelMasksDir:
             for parent in self.trainDir, self.validateDir, self.testDir:
-                toCreate = parent/sub
+                toCreate = parent / sub
                 if any(ex in str(toCreate) for ex in excludeExprs):
                     continue
                 toCreate.mkdir(exist_ok=True)

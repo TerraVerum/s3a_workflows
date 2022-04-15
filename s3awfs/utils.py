@@ -20,21 +20,24 @@ from utilitys import NestedProcess, ProcessStage
 from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
-T = t.TypeVar('T')
+T = t.TypeVar("T")
+
 
 def defaultTitle(name, trimExprs, prefix, suffix):
-    name = fns.pascalCaseToTitle(name).replace(' ', '_').lower() + suffix
+    name = fns.pascalCaseToTitle(name).replace(" ", "_").lower() + suffix
     for suff in trimExprs:
-        name = re.sub(f'_?{suff}', '', name)
+        name = re.sub(f"_?{suff}", "", name)
     if isinstance(prefix, RegisteredPath):
         name = os.path.join(prefix.subPath, name)
     elif prefix:
         name = prefix + name
     return name
 
+
 def titleCase(*args):
     name = defaultTitle(*args)
     return fns.pascalCaseToTitle(name)
+
 
 # Credit: https://stackoverflow.com/a/37095733/9463643
 def path_is_parent(parent_path, child_path):
@@ -45,15 +48,16 @@ def path_is_parent(parent_path, child_path):
     # Compare the common path of the parent and child path with the common path of just the parent path. Using the commonpath method on just the parent path will regularise the path name in the same way as the comparison that deals with both paths, removing any trailing path separator
     return parent_path == os.path.commonpath([parent_path, child_path])
 
-class RegisteredPath:
 
-    def __init__(self,
-                 suffix='',
-                 prefix: str | RegisteredPath=None,
-                 trimExprs=('file', 'path', 'dir'),
-                 title: t.Callable=defaultTitle,
-                 output=True
-                 ):
+class RegisteredPath:
+    def __init__(
+        self,
+        suffix="",
+        prefix: str | RegisteredPath = None,
+        trimExprs=("file", "path", "dir"),
+        title: t.Callable = defaultTitle,
+        output=True,
+    ):
         self.prefix = prefix
         self.suffix = suffix
         self.trimExprs = trimExprs
@@ -77,47 +81,47 @@ class RegisteredPath:
     def __fspath__(self):
         return self.subPath
 
+
 class WorkflowMixin:
     name: str = None
 
-    def __init__(
-        self,
-        folder: Path|str=None,
-        parent: NestedWorkflow=None
-    ):
-        self.localFolder = Path(folder or '')
+    def __init__(self, folder: Path | str = None, parent: NestedWorkflow = None):
+        self.localFolder = Path(folder or "")
         self.parent = parent
 
     @property
     def workflowDir(self):
         if self.parent:
-            return self.parent.workflowDir/self.localFolder
+            return self.parent.workflowDir / self.localFolder
         return self.localFolder
 
-    def resetRegisteredPaths(self): ...
+    def resetRegisteredPaths(self):
+        ...
 
-    def createDirs(self): ...
+    def createDirs(self):
+        ...
+
 
 class WorkflowDir(AtomicProcess, WorkflowMixin):
     outputPaths: t.Set[str] = set()
 
     def __init__(
         self,
-        name: str=None,
-        folder: Path | str=None,
+        name: str = None,
+        folder: Path | str = None,
         *,
         reset=False,
         createDirs=False,
-        **kwargs
+        **kwargs,
     ):
-        baseName = self.name or type(self).__name__.replace('Workflow', '')
+        baseName = self.name or type(self).__name__.replace("Workflow", "")
         defaultName = fns.pascalCaseToTitle(baseName)
         name = name or defaultName
 
         if folder is None:
             folder = name
 
-        kwargs.setdefault('interactive', False)
+        kwargs.setdefault("interactive", False)
         AtomicProcess.__init__(self, self.runWorkflow, name=name, **kwargs)
         WorkflowMixin.__init__(self, folder)
 
@@ -137,7 +141,7 @@ class WorkflowDir(AtomicProcess, WorkflowMixin):
             else:
                 path.unlink()
 
-    def createDirs(self, excludeExprs=('.',)):
+    def createDirs(self, excludeExprs=(".",)):
         # Sort so parent paths are created first
         self.workflowDir.mkdir(exist_ok=True)
         for path in sorted(self.outputPaths):
@@ -148,6 +152,7 @@ class WorkflowDir(AtomicProcess, WorkflowMixin):
     def runWorkflow(self, *args, **kwargs):
         pass
 
+
 class NestedWorkflow(NestedProcess, WorkflowMixin):
     stages: list[WorkflowDir]
 
@@ -157,11 +162,11 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
     def __init__(
         self,
         name: str = None,
-        folder: FilePath=None,
+        folder: FilePath = None,
         createDirs=False,
         reset=False,
     ):
-        NestedProcess.__init__(self, name or '<Unnamed>')
+        NestedProcess.__init__(self, name or "<Unnamed>")
         WorkflowMixin.__init__(self, folder or name)
 
         if reset:
@@ -173,19 +178,19 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
         for cls in stageClasses:
             self.get(cls).disabled = True
 
-    def saveStringifiedConfig(self, folder: str | Path=None, **initKwargs):
+    def saveStringifiedConfig(self, folder: str | Path = None, **initKwargs):
         state = self.saveState(includeDefaults=True)
         # Make a dummy process for input parameters just to easily save its state
-        initState = AtomicProcess(self.__init__, name='Initialization', interactive=False, **initKwargs).saveState(
-            includeDefaults=True
-        )
+        initState = AtomicProcess(
+            self.__init__, name="Initialization", interactive=False, **initKwargs
+        ).saveState(includeDefaults=True)
         state[self.name].insert(0, initState)
 
         # Some values are unrepresentable in their natural form (e.g. Paths)
         state = stringifyDict(state)
         if folder is None:
             folder = self.workflowDir
-        fns.saveToFile(state, Path(folder).joinpath('config.yml'))
+        fns.saveToFile(state, Path(folder).joinpath("config.yml"))
         return state
 
     @classmethod
@@ -215,12 +220,11 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
             if not wf.disabled:
                 wf.resetRegisteredPaths()
 
-    def createDirs(self, excludeExprs=('.',)):
+    def createDirs(self, excludeExprs=(".",)):
         self.workflowDir.mkdir(exist_ok=True)
         for wf in self.stages:
             if not wf.disabled and isinstance(wf, Workflow_T):
                 wf.createDirs(excludeExprs)
-
 
     def _getFromRoot(self, root: Workflow_T, wfClassorName):
         # TODO: Prefer stages closer to requesting process
@@ -246,7 +250,9 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
         # Requested stage type is not present
         raise KeyError(f'Workflow type "{wfClass}" is not present')
 
+
 Workflow_T = (WorkflowDir, NestedWorkflow)
+
 
 def argparseHelpAction(nested: NestedWorkflow):
     class NestedWorkflowHelp(argparse.Action):
@@ -258,17 +264,21 @@ def argparseHelpAction(nested: NestedWorkflow):
             state = {}
             for stage in nested.stagesFlattened:
                 pgDict = fns.funcToParamDict(stage.func)
-                for child in pgDict['children']:
-                    state[child['name']] = child
+                for child in pgDict["children"]:
+                    state[child["name"]] = child
             newCli = fns.makeCli(
                 nested.__init__,
                 convertArgs=False,
-                parserKwargs=dict(formatter_class=argparse.ArgumentDefaultsHelpFormatter),
-                **state
+                parserKwargs=dict(
+                    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+                ),
+                **state,
             )
             newCli.print_help()
             parser.exit()
+
     return NestedWorkflowHelp
+
 
 class AliasedMaskResolver:
     classInfo: t.Optional[pd.DataFrame]
@@ -304,8 +314,8 @@ class AliasedMaskResolver:
         self.hasClassInfo = True
 
     def setClassInfo(self, classInfoDf: pd.DataFrame):
-        if 'numeric_label' in classInfoDf:
-            classInfoDf = classInfoDf.set_index('numeric_label')
+        if "numeric_label" in classInfoDf:
+            classInfoDf = classInfoDf.set_index("numeric_label")
         self.classInfo = classInfoDf
         self.hasClassInfo = True
 
@@ -314,28 +324,30 @@ class AliasedMaskResolver:
         """
         Resolves potential aliases in the output class mapping for unambiguous mask value to class number matching
         """
-        classes, numericLabels = np.unique(outputClasses.to_numpy(str), return_inverse=True)
+        classes, numericLabels = np.unique(
+            outputClasses.to_numpy(str), return_inverse=True
+        )
         outputDf = pd.DataFrame()
-        outputDf['label'] = outputClasses
-        outputDf['numeric_class'] = numericLabels + 1
+        outputDf["label"] = outputClasses
+        outputDf["numeric_class"] = numericLabels + 1
         # Add in background for easy indexing
-        outputDf.index.name = 'numeric_label'
-        outputDf.loc[0, ['numeric_class', 'label']] = (0, 'BGND')
+        outputDf.index.name = "numeric_label"
+        outputDf.loc[0, ["numeric_class", "label"]] = (0, "BGND")
         # Type not preserved when adding new row for some reason?
-        outputDf['numeric_class'] = outputDf['numeric_class'].astype(int)
+        outputDf["numeric_class"] = outputDf["numeric_class"].astype(int)
         return outputDf
 
     @property
     def numClasses(self):
-        return self.classInfo['numeric_class'].max() + 1 if self.hasClassInfo else None
+        return self.classInfo["numeric_class"].max() + 1 if self.hasClassInfo else None
 
     def generateColoredMask(
         self,
         labelMask: np.ndarray | FilePath,
         outputFile,
         numClasses=None,
-        colorMap: str=None,
-        resolve=True
+        colorMap: str = None,
+        resolve=True,
     ):
         """
         A helper function that generates rescaled or RGB versions of label masks
@@ -354,10 +366,10 @@ class AliasedMaskResolver:
         if colorMap is None:
             gutils.cvImsaveRgb(outputFile, labelMask)
             return
-        if colorMap == 'binary':
+        if colorMap == "binary":
             # No need to use colormap -- just force high values on save
             # Values > 1 should all clip to 255
-            gutils.cvImsaveRgb(outputFile, (labelMask > 0).astype('uint8') * 255)
+            gutils.cvImsaveRgb(outputFile, (labelMask > 0).astype("uint8") * 255)
             return
         if numClasses is None:
             numClasses = np.max(labelMask) + 1
@@ -368,14 +380,19 @@ class AliasedMaskResolver:
 
     def getMaybeResolve(self, mask: FilePath | np.ndarray, resolve=True):
         if isinstance(mask, FilePath.__args__):
-            mask = gutils.cvImreadRgb(self.masksDir/mask, cv.IMREAD_UNCHANGED)
+            mask = gutils.cvImreadRgb(self.masksDir / mask, cv.IMREAD_UNCHANGED)
         # Only keep known labels
         if not resolve or not self.hasClassInfo:
             return mask
-        mask[(mask > 0) & np.isin(mask, self.classInfo.index.to_numpy(), invert=True)] = 0
+        mask[
+            (mask > 0) & np.isin(mask, self.classInfo.index.to_numpy(), invert=True)
+        ] = 0
         # Account for aliasing
-        mask[mask > 0] = self.classInfo.loc[mask[mask > 0], 'numeric_class'].to_numpy(int)
+        mask[mask > 0] = self.classInfo.loc[mask[mask > 0], "numeric_class"].to_numpy(
+            int
+        )
         return mask
+
 
 # Will be the same on a platform so can be cached
 @functools.lru_cache()
@@ -386,17 +403,21 @@ def getLinkFunc():
     # Use symlinks to avoid lots of file duplication
     def relativeSymlink(src, dst):
         return os.symlink(os.path.relpath(src, os.path.dirname(dst)), dst)
+
     try:
         linkFunc = relativeSymlink
         with tempfile.TemporaryDirectory() as td:
-            src: Path = Path(td) / 'test'
+            src: Path = Path(td) / "test"
             src.touch()
-            linkFunc(src, src.with_name('testlink'))
+            linkFunc(src, src.with_name("testlink"))
     except (PermissionError, OSError):
         linkFunc = shutil.copy
     return linkFunc
 
+
 _DISCARDED = object()
+
+
 def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
     discards = []
     if isinstance(item, dict):
@@ -415,7 +436,7 @@ def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
                 discards.append(ii)
     # Special known case which shouldn't be preserved
     elif isinstance(item, unconvertable):
-        item =  _DISCARDED
+        item = _DISCARDED
     elif not isinstance(item, (int, float, bool, str, type(None))):
         item = str(item)
     # Only happens when item is dict or list
@@ -425,20 +446,26 @@ def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
             del item[kk]
     return item
 
+
 class DirCreator(WorkflowDir):
     """
     Convenience class to allow creating workflow dirs from a config file
     """
+
     def __init__(self, **kwargs):
-        kwargs.update(folder='.', createDirs=False, name='Create Directories')
+        kwargs.update(folder=".", createDirs=False, name="Create Directories")
         super().__init__(**kwargs)
 
     def runWorkflow(self, **kwargs):
         self.parent.createDirs()
 
+
 def pathCtor(constructor, node):
     return Path(constructor.construct_scalar(node))
-fns.loader.constructor.add_constructor('!Path', pathCtor)
+
+
+fns.loader.constructor.add_constructor("!Path", pathCtor)
+
 
 class WorkflowEditor(AlgParamEditor):
     def _resolveProccessor(self, proc):

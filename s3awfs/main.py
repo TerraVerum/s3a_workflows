@@ -12,9 +12,9 @@ from utilitys.typeoverloads import FilePath
 
 
 class MainWorkflow(NestedWorkflow):
-    name = 'Main Workflow'
+    name = "Main Workflow"
 
-    @fns.dynamicDocstring(_allWorkflows=[m.split('.')[-1] for m in wfModules])
+    @fns.dynamicDocstring(_allWorkflows=[m.split(".")[-1] for m in wfModules])
     def __init__(
         self,
         folder,
@@ -22,7 +22,7 @@ class MainWorkflow(NestedWorkflow):
         multiprocess=False,
         createDirs=True,
         reset=False,
-        **kwargs
+        **kwargs,
     ):
         """
         Performs workflows as prescribed by every stage defined in ``stages``
@@ -35,7 +35,7 @@ class MainWorkflow(NestedWorkflow):
           and files removed) before running
         :param kwargs: Additional keywods for workflow creation
         """
-        name = kwargs.pop('name', self.name)
+        name = kwargs.pop("name", self.name)
         super().__init__(name=name, folder=folder)
 
         if multiprocess:
@@ -63,10 +63,10 @@ class MainWorkflow(NestedWorkflow):
         cls,
         config: dict | FilePath = None,
         folder=None,
-        workflow: str=None,
+        workflow: str = None,
         run=False,
         writeConfig=None,
-        **kwargs
+        **kwargs,
     ):
         """
         Creates a workflow based on a configuration that likely came from a previous run's call to `saveState`.
@@ -88,28 +88,28 @@ class MainWorkflow(NestedWorkflow):
           on their names. See MainWorkflow.splitInitAndRunKwargs
         """
         if (
-            config is None and folder is None
+            config is None
+            and folder is None
             or (not isinstance(config, FilePath.__args__) and folder is None)
         ):
             raise ValueError('Either "config" or "folder" must be a filepath')
         if folder is None:
             folder = Path(config).parent
         if config is None:
-            config = folder/'config.alg'
+            config = folder / "config.alg"
         editor = WorkflowProcClctn(
-            procType=NestedWorkflow,
-            procEditorType=WorkflowEditor
+            procType=NestedWorkflow, procEditorType=WorkflowEditor
         ).createProcessorEditor(str(folder))
         if not isinstance(config, FilePath.__args__):
             fullConfig = config
-            config = 'config.alg'
+            config = "config.alg"
         else:
             fullConfig = fns.attemptFileLoad(config)
-        if 'top' not in fullConfig:
+        if "top" not in fullConfig:
             # Classic style
             return cls.fromClassicConfig(config, folder, run, writeConfig, **kwargs)
         if workflow is not None:
-            fullConfig['active'] = workflow
+            fullConfig["active"] = workflow
         editor.loadParamValues(config, fullConfig)
         proc: NestedWorkflow = editor.curProcessor.processor
         saveName = Path(config).resolve()
@@ -128,12 +128,12 @@ class MainWorkflow(NestedWorkflow):
     @classmethod
     @wraps(fromConfig)
     def fromClassicConfig(
-      cls,
-      config: dict | FilePath = None,
-      folder=None,
-      run=False,
-      writeConfig=None,
-      **kwargs
+        cls,
+        config: dict | FilePath = None,
+        folder=None,
+        run=False,
+        writeConfig=None,
+        **kwargs,
     ):
         if config is None and folder is None:
             raise ValueError('"config" and "folder" cannot both be *None*')
@@ -150,25 +150,25 @@ class MainWorkflow(NestedWorkflow):
             config = config[cls.name]
 
         # Remove prefix stage number if it exists
-        nameFmt = lambda name: name.split('. ', maxsplit=1)[-1]
+        nameFmt = lambda name: name.split(". ", maxsplit=1)[-1]
         useConfig = {}
         for stage in config:
             if isinstance(stage, dict):
                 for stageK, stageV in stage.items():
                     useConfig[nameFmt(stageK)] = stageV
-        if 'Initialization' in useConfig:
+        if "Initialization" in useConfig:
             # Came from a previously saved run
-            kwargs = {**useConfig.pop('Initialization'), **kwargs}
+            kwargs = {**useConfig.pop("Initialization"), **kwargs}
 
         useNames = [nameFmt(name) for name in useConfig]
-        kwargs.setdefault('stages', useNames)
+        kwargs.setdefault("stages", useNames)
         initKwargs, runKwargs = cls.splitInitAndRunKwargs(kwargs)
-        
-        folder = Path(folder or '')
+
+        folder = Path(folder or "")
         mwf = cls(folder, **initKwargs)
         mwf.updateInput(**useConfig)
         if writeConfig is None:
-            writeConfig = configFile != (folder / 'config.yml').resolve()
+            writeConfig = configFile != (folder / "config.yml").resolve()
         if writeConfig:
             mwf.saveStringifiedConfig(**initKwargs)
         if run:
@@ -183,7 +183,7 @@ class MainWorkflow(NestedWorkflow):
             returnSingle = True
         else:
             returnSingle = False
-        nameFormatter = lambda stage: ''.join(stage.split()).lower()
+        nameFormatter = lambda stage: "".join(stage.split()).lower()
         ret = []
         checked = []
         for stageName in stageSpec:
@@ -202,16 +202,21 @@ class MainWorkflow(NestedWorkflow):
                 # KeyError preserves '\n' in error messages due to using repr instead of str
                 # Hacky workaround to accomodate this
                 class KeyErrMsg(str):
-                    def __repr__(self): return str(self)
+                    def __repr__(self):
+                        return str(self)
+
                 # 'checked' will contain all possible values
-                msg = f'Stage "{stageName}" not recognized, must resemble one of:\n' \
-                      f'{", ".join(list(checked))}'
+                msg = (
+                    f'Stage "{stageName}" not recognized, must resemble one of:\n'
+                    f'{", ".join(list(checked))}'
+                )
                 raise KeyError(KeyErrMsg(msg))
             else:
                 ret.append(wfClass)
         if returnSingle:
             return ret[0]
         return ret
+
 
 class WorkflowProcClctn(AlgCollection):
     @classmethod
@@ -222,4 +227,3 @@ class WorkflowProcClctn(AlgCollection):
                 if isinstance(stage, Workflow_T):
                     stage.parent = proc
         return proc
-

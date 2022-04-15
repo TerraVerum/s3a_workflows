@@ -6,7 +6,14 @@ import cv2 as cv
 import numpy as np
 
 import pandas as pd
-from s3a import REQD_TBL_FIELDS as RTF, TableData, ComplexXYVertices, XYVertices, compio, defaultIo
+from s3a import (
+    REQD_TBL_FIELDS as RTF,
+    TableData,
+    ComplexXYVertices,
+    XYVertices,
+    compio,
+    defaultIo,
+)
 from s3a.compio import SerialExporter, SerialImporter
 from tqdm import tqdm
 from utilitys import fns
@@ -31,7 +38,7 @@ class FormattedInputWorkflow(WorkflowDir):
         self,
         annotationsPath: FilePath = None,
         augmentationOpts: dict = None,
-        filterExpr: str=None
+        filterExpr: str = None,
     ):
         """
         Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
@@ -50,11 +57,13 @@ class FormattedInputWorkflow(WorkflowDir):
         else:
             df = SerialImporter.readFile(annotationsPath)
         if filterExpr is not None:
-            df = df.query(filterExpr, engine='python')
+            df = df.query(filterExpr, engine="python")
         # Ensure old naming scheme is valid
-        df = df.rename(columns={'Source Image Filename': RTF.IMG_FILE.name})
-        for imageName, subdf in tqdm(df.groupby(RTF.IMG_FILE.name), 'Formatting inputs'):
-            newName = Path(imageName).with_suffix('.csv').name
+        df = df.rename(columns={"Source Image Filename": RTF.IMG_FILE.name})
+        for imageName, subdf in tqdm(
+            df.groupby(RTF.IMG_FILE.name), "Formatting inputs"
+        ):
+            newName = Path(imageName).with_suffix(".csv").name
             dest = self.formattedInputsDir / newName
             if not dest.exists():
                 SerialExporter.writeFile(dest, subdf, readonly=False)
@@ -66,15 +75,21 @@ class FormattedInputWorkflow(WorkflowDir):
         return df
 
     def _maybeCreateAugmentations(self, originalVerts, imageFile):
-        augmentOpts = (self.input.get('augmentationOpts') or {}).copy()
-        if not augmentOpts or np.isclose(augmentOpts.get('fraction', 0.0), 0):
+        augmentOpts = (self.input.get("augmentationOpts") or {}).copy()
+        if not augmentOpts or np.isclose(augmentOpts.get("fraction", 0.0), 0):
             return None
-        originalVerts = compio.helpers.deserialize(RTF.VERTICES, originalVerts, returnErrs=False)
+        originalVerts = compio.helpers.deserialize(
+            RTF.VERTICES, originalVerts, returnErrs=False
+        )
         numComps = len(originalVerts)
-        numComps = int(numComps * augmentOpts.pop('fraction'))
-        existingBoxes = np.array([[(s := v.stack()).min(0), s.max(0)] for v in originalVerts])
+        numComps = int(numComps * augmentOpts.pop("fraction"))
+        existingBoxes = np.array(
+            [[(s := v.stack()).min(0), s.max(0)] for v in originalVerts]
+        )
         existingSizes = existingBoxes.ptp(1)
-        augSizes = RNG.normal(existingSizes.mean(0), 2 * existingSizes.std(0), (numComps, 2))
+        augSizes = RNG.normal(
+            existingSizes.mean(0), 2 * existingSizes.std(0), (numComps, 2)
+        )
         augCenters = existingBoxes.mean(1)
         augCenters += RNG.normal(0, augCenters.std(0) / 4, augCenters.shape)
         # Accomodate case where more rows are requested than exist in the dataframe
@@ -84,25 +99,25 @@ class FormattedInputWorkflow(WorkflowDir):
             **augmentOpts,
             sizes=augSizes,
             centers=augCenters,
-            clipToBbox=False
+            clipToBbox=False,
         )
         augmentedComps[RTF.IMG_FILE] = imageFile
         defaultIo.exportCsv(
             augmentedComps,
-            self.augmentedInputsDir / imageFile.replace('.png', '.csv'),
-            readonly=False
+            self.augmentedInputsDir / imageFile.replace(".png", ".csv"),
+            readonly=False,
         )
         return augmentedComps
 
     @property
     def formattedFiles(self):
-        return fns.naturalSorted(self.formattedInputsDir.glob('*.csv'))
+        return fns.naturalSorted(self.formattedInputsDir.glob("*.csv"))
+
 
 class ComponentGenerator:
     def __init__(
         self,
         tableData=None,
-
     ):
         self.tableData = tableData or TableData()
 
@@ -114,13 +129,13 @@ class ComponentGenerator:
         centers=None,
         rotations=None,
         rotationPct=0.4,
-        clipToBbox=True
+        clipToBbox=True,
     ):
         if bbox is None:
             bbox = np.array([[0, 0], [2000, 2000]])
         span = bbox.ptp(0)
         if sizes is None:
-            sizes = np.abs(RNG.normal(0.05*span, 0.05*span, (numRows, 2)))
+            sizes = np.abs(RNG.normal(0.05 * span, 0.05 * span, (numRows, 2)))
         if centers is None:
             centers = RNG.uniform(bbox[0], bbox[1], (numRows, 2))
         if rotations is None:

@@ -13,11 +13,12 @@ from . import constants
 from .compimgs import ComponentImagesWorkflow
 from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
 
+
 class PngExportWorkflow(WorkflowDir):
 
-    TRAIN_NAME = 'train'
-    VALIDATION_NAME = 'validation'
-    TEST_NAME = 'test'
+    TRAIN_NAME = "train"
+    VALIDATION_NAME = "validation"
+    TEST_NAME = "test"
 
     ALL_DATA_TYPE_NAMES = [TRAIN_NAME, VALIDATION_NAME, TEST_NAME]
 
@@ -26,7 +27,7 @@ class PngExportWorkflow(WorkflowDir):
     overlaysDir = RegisteredPath()
 
     summariesDir = RegisteredPath()
-    summaryFile = RegisteredPath('.csv')
+    summaryFile = RegisteredPath(".csv")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,11 +45,17 @@ class PngExportWorkflow(WorkflowDir):
           include ``opacity`` between 0->1 and ``colormap`` matching pyqtgraph or matplotlib colormap
         """
         compImgsWf = self.parent.get(ComponentImagesWorkflow)
-        files = np.array(list(compImgsWf.compImgsDir.glob('*.*')))
+        files = np.array(list(compImgsWf.compImgsDir.glob("*.*")))
         stems = [f.stem for f in files]
         if self.summaryFile.exists():
             summary = pd.read_csv(self.summaryFile)
-            newFiles = fns.naturalSorted(files[np.isin(stems, [Path(f).stem for f in summary['imageFile']], invert=True)])
+            newFiles = fns.naturalSorted(
+                files[
+                    np.isin(
+                        stems, [Path(f).stem for f in summary["imageFile"]], invert=True
+                    )
+                ]
+            )
         else:
             newFiles = fns.naturalSorted(files)
 
@@ -66,32 +73,30 @@ class PngExportWorkflow(WorkflowDir):
             self.createOverlays(overlayOpts=overlayOpts, showProgress=True)
 
     def _exportSinglePcbImage(self, compImgsFile):
-        outputSummaryName = self.summariesDir / compImgsFile.with_suffix('.csv').name
+        outputSummaryName = self.summariesDir / compImgsFile.with_suffix(".csv").name
         if outputSummaryName.exists():
             return
 
         outDf = ComponentImagesWorkflow.readDataframe(compImgsFile)
-        outDf['imageFile'] = compImgsFile.with_suffix('.png').name
+        outDf["imageFile"] = compImgsFile.with_suffix(".png").name
 
         exportedImgs = []
         for index, row in outDf.iterrows():
             imageName = self._exportSingleComp(index, row)
             exportedImgs.append(imageName)
-        outDf['compImageFile'] = exportedImgs
+        outDf["compImageFile"] = exportedImgs
         outDf: pd.DataFrame
-        outDf.drop(columns=['labelMask', 'image']).to_csv(
-            outputSummaryName,
-            index=False
+        outDf.drop(columns=["labelMask", "image"]).to_csv(
+            outputSummaryName, index=False
         )
 
     def _exportSingleComp(self, index, row: dict):
         exportName = f'{os.path.splitext(row["imageFile"])[0]}_id_{index}.png'
 
         for retKey, dir_ in zip(
-            ['image', 'labelMask'],
-            [self.imagesDir, self.labelMasksDir]
+            ["image", "labelMask"], [self.imagesDir, self.labelMasksDir]
         ):
-            saveName = dir_/exportName
+            saveName = dir_ / exportName
             gutils.cvImsaveRgb(saveName, row[retKey])
 
         return exportName
@@ -104,7 +109,9 @@ class PngExportWorkflow(WorkflowDir):
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
 
-    def createOverlays(self, labels: pd.Series=None, overlayOpts=None, showProgress=False):
+    def createOverlays(
+        self, labels: pd.Series = None, overlayOpts=None, showProgress=False
+    ):
         """
         Overlays masks on top of images and saves to a new directory
         :param labels: Mapping of numeric mask value to its string label
@@ -114,19 +121,25 @@ class PngExportWorkflow(WorkflowDir):
         if labels is None:
             labels = self.summaryFile
         if isinstance(labels, FilePath.__args__):
-            labels = pd.read_csv(labels, dtype=str, na_filter=False, index_col=['numericLabel'])
-            labels = labels['label'].drop_duplicates()
-            labels[labels.str.len() == 0] = '<blank>'
+            labels = pd.read_csv(
+                labels, dtype=str, na_filter=False, index_col=["numericLabel"]
+            )
+            labels = labels["label"].drop_duplicates()
+            labels[labels.str.len() == 0] = "<blank>"
         oldProps = dict(self.compositor.propertiesProc.input)
         self.compositor.updateLabelMap(labels)
         self.compositor.propertiesProc(**(overlayOpts or {}))
-        existingIms = {im.stem for im in self.overlaysDir.glob('*.*')}
-        imgList = fns.naturalSorted([im for im in self.imagesDir.glob('*.png') if im.stem not in existingIms])
+        existingIms = {im.stem for im in self.overlaysDir.glob("*.*")}
+        imgList = fns.naturalSorted(
+            [im for im in self.imagesDir.glob("*.png") if im.stem not in existingIms]
+        )
         if showProgress:
-            imgList = tqdm(imgList, 'Creating Overlays')
+            imgList = tqdm(imgList, "Creating Overlays")
         for img in imgList:
-            mask = gutils.cvImreadRgb(self.labelMasksDir/img.name, cv.IMREAD_UNCHANGED)
-            outputFile = self.overlaysDir / img.with_suffix('.jpg').name
+            mask = gutils.cvImreadRgb(
+                self.labelMasksDir / img.name, cv.IMREAD_UNCHANGED
+            )
+            outputFile = self.overlaysDir / img.with_suffix(".jpg").name
             self.overlayMaskOnImage(img, mask, outputFile)
         self.compositor.propertiesProc(**oldProps)
 

@@ -12,6 +12,7 @@ from tensorflow.python.keras.utils.np_utils import to_categorical
 
 from s3awfs.constants import RNG
 
+
 class SequenceDataGenerator(Sequence):
     """
     A class that serves as a custom data generator for the Neural Network pipeline.
@@ -27,7 +28,7 @@ class SequenceDataGenerator(Sequence):
         imageShape,
         numOutputClasses,
         batchSize,
-        shuffle=True
+        shuffle=True,
     ):
         """
         :param ownedImageNames: list
@@ -92,7 +93,9 @@ class SequenceDataGenerator(Sequence):
         """
         num_classes = self.numOutputClasses
         images = np.empty((len(image_names), *self.imageShape), dtype=np.uint8)
-        masks = np.empty((len(image_names), *self.imageShape[:2], num_classes), dtype=np.uint8)
+        masks = np.empty(
+            (len(image_names), *self.imageShape[:2], num_classes), dtype=np.uint8
+        )
         for index, imageFile in enumerate(image_names):
             img = gutils.cvImreadRgb(self.imagesDir / imageFile, cv.IMREAD_UNCHANGED)
             mask = self.getMask(imageFile)
@@ -105,15 +108,17 @@ class SequenceDataGenerator(Sequence):
         mask = to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
         return mask
 
+
 class SquareMaskSequenceDataGenerator(SequenceDataGenerator):
     def getMask(self, maskName):
         mask = gutils.cvImreadRgb(self.labelMasksDir / maskName, cv.IMREAD_UNCHANGED)
         if self.numOutputClasses > 2:
-            raise ValueError('Square mask only works with binary initial labels')
+            raise ValueError("Square mask only works with binary initial labels")
         for region in regionprops(label(mask)):
             bbox = region.bbox
-            mask[bbox[0]:bbox[2], bbox[1]:bbox[3]] = 1
+            mask[bbox[0] : bbox[2], bbox[1] : bbox[3]] = 1
         return to_categorical(mask, num_classes=self.numOutputClasses, dtype=np.uint8)
+
 
 class DataGenIterator:
     def __init__(
@@ -124,7 +129,7 @@ class DataGenIterator:
         imageShape,
         numOutputClasses,
         shuffle=True,
-        **_kwargs
+        **_kwargs,
     ):
         np.random.seed(22)
         names = []
@@ -136,7 +141,7 @@ class DataGenIterator:
         self.imagesDir = imagesDir
         self.shuffle = shuffle
         self.numOutputClasses = numOutputClasses
-        self.imageShape= imageShape
+        self.imageShape = imageShape
         self.maskShape = (*imageShape[:2], numOutputClasses)
         self.labelMasksDir = labelMasksDir
         if shuffle:
@@ -145,11 +150,10 @@ class DataGenIterator:
     def process_path(self, file_path):
         rets = []
         for parent, numChannels in zip(
-            [self.imagesDir, self.labelMasksDir],
-            [self.imageShape[-1], 1]
+            [self.imagesDir, self.labelMasksDir], [self.imageShape[-1], 1]
         ):
             # Convert the compressed string to a 3D uint8 tensor
-            img = tf.io.read_file(str(parent/file_path))
+            img = tf.io.read_file(str(parent / file_path))
             img = tf.io.decode_png(img, channels=numChannels)
             # Resize the image to the desired size
             rets.append(tf.image.resize(img, self.imageShape[:2]))
@@ -162,28 +166,25 @@ class DataGenIterator:
         """
         name = self.ownedImageNames[index]
         image, mask = self.process_path(name)
-        return (
-            image,
-            to_categorical(
-                mask,
-                self.numOutputClasses
-            )
-        )
+        return (image, to_categorical(mask, self.numOutputClasses))
 
     def __call__(self):
         yield from iter(self)
+
 
 def dataGeneratorFromIter(**kwargs):
     gen = DataGenIterator(**kwargs)
     imageSig = tf.TensorSpec(shape=gen.imageShape)
     maskSig = tf.TensorSpec(shape=gen.maskShape)
     try:
-        dataset = tf.data.Dataset.from_generator(gen, output_signature=(imageSig, maskSig))
+        dataset = tf.data.Dataset.from_generator(
+            gen, output_signature=(imageSig, maskSig)
+        )
     except TypeError:
         # Older version of tensorflow doesn't support output_signature
         dataset = tf.data.Dataset.from_generator(
             gen,
             output_types=(imageSig.dtype, maskSig.dtype),
-            output_shapes=(imageSig.shape, maskSig.shape)
+            output_shapes=(imageSig.shape, maskSig.shape),
         )
     return dataset

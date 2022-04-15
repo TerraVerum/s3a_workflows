@@ -16,17 +16,19 @@ from . import constants
 from .fmtinput import FormattedInputWorkflow
 from .utils import WorkflowDir, RegisteredPath
 
+
 class ComponentImagesWorkflow(WorkflowDir):
     """
     Prescribes a workflow for generating data sufficient for SMD label-based segmentation unit.
     The final output is a pickled dataframe of component images as well as a populated directory with
     most intermediate steps, and some fitted data transformers. See `run` for more information
     """
+
     compImgsDir = RegisteredPath()
     fullLabelMasksDir = RegisteredPath()
 
-    allLabelsFile = RegisteredPath('.csv')
-    compImgsFile = RegisteredPath('.pkl')
+    allLabelsFile = RegisteredPath(".csv")
+    compImgsFile = RegisteredPath(".pkl")
 
     labelField: PrjParam | str = None
 
@@ -44,30 +46,33 @@ class ComponentImagesWorkflow(WorkflowDir):
         Since files don't have a zip extension, the default call to `read_pickle` will fail. This lets other
         classes become agnostic about adding a "compression" parameter
         """
-        return pd.read_pickle(file, compression='zip')
-
+        return pd.read_pickle(file, compression="zip")
 
     def createGetLabelMapping(self):
         """
         Creates a complete list of all labels from the cleaned input
         """
         if self.allLabelsFile.exists():
-            return pd.read_csv(self.allLabelsFile, index_col='numeric_label', na_filter=False)['label']
-        imagesPath = Path(self.input['imagesPath'])
+            return pd.read_csv(
+                self.allLabelsFile, index_col="numeric_label", na_filter=False
+            )["label"]
+        imagesPath = Path(self.input["imagesPath"])
         labelsSer = pd.concat(
             [
                 pd.read_csv(f, na_filter=False)[str(self.labelField)]
                 for f in self.parent.get(FormattedInputWorkflow).formattedFiles
-                if len(list(imagesPath.glob(f.stem + '*')))
+                if len(list(imagesPath.glob(f.stem + "*")))
             ]
         )
         limitsCounts = labelsSer.value_counts()
 
-        infoDf = pd.DataFrame(np.c_[limitsCounts.index, limitsCounts.values], columns=['label', 'count'])
-        infoDf.index.name = 'numeric_label'
+        infoDf = pd.DataFrame(
+            np.c_[limitsCounts.index, limitsCounts.values], columns=["label", "count"]
+        )
+        infoDf.index.name = "numeric_label"
         infoDf.index += 1
         infoDf.to_csv(self.allLabelsFile)
-        return infoDf['label']
+        return infoDf["label"]
 
     def createCompImgsDfSingle(self, file, srcDir, returnDf=False, resizeOpts=None):
         """
@@ -78,24 +83,32 @@ class ComponentImagesWorkflow(WorkflowDir):
         mapping = self.createGetLabelMapping()
         labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
         if isinstance(labelCol, str):
-            labelColAsParam = PrjParam(labelCol, '')
+            labelColAsParam = PrjParam(labelCol, "")
             csvDf = csvDf.rename(columns={labelCol: labelColAsParam})
-        csvDf.columns[csvDf.columns.get_loc(self.labelField)].opts['limits'] = mapping.to_list()
-        if resizeOpts is None or 'shape' not in resizeOpts:
-            raise ValueError('Must pass at least a dictionary with `shape` info when creating component image exports')
-        imageFiles = list(srcDir.glob(file.stem + '*'))
+        csvDf.columns[csvDf.columns.get_loc(self.labelField)].opts[
+            "limits"
+        ] = mapping.to_list()
+        if resizeOpts is None or "shape" not in resizeOpts:
+            raise ValueError(
+                "Must pass at least a dictionary with `shape` info when creating component image exports"
+            )
+        imageFiles = list(srcDir.glob(file.stem + "*"))
         if not len(imageFiles):
-            warnings.warn(f'No image for {file.name}, no export will be formed', UserWarning, stacklevel=2)
+            warnings.warn(
+                f"No image for {file.name}, no export will be formed",
+                UserWarning,
+                stacklevel=2,
+            )
             return
         imageFile = imageFiles[0]
         stats = Image.open(imageFile)
         labelMask, numericMapping = self.io.exportLblPng(
             csvDf,
-            self.fullLabelMasksDir.joinpath(file.stem + '.png'),
+            self.fullLabelMasksDir.joinpath(file.stem + ".png"),
             labelField=self.labelField,
             imageShape=(stats.height, stats.width),
             returnLabelMapping=True,
-            checkVerts=False
+            checkVerts=False,
         )
 
         kwargs = dict(
@@ -104,30 +117,39 @@ class ComponentImagesWorkflow(WorkflowDir):
             labelMapping=numericMapping,
             resizeOpts=resizeOpts,
             labelField=self.labelField,
-            returnStats=True
+            returnStats=True,
         )
 
-        originalExport = self._finalizeSingleExport(csvDf, imageFile.stem, mapping, kwargs)
+        originalExport = self._finalizeSingleExport(
+            csvDf, imageFile.stem, mapping, kwargs
+        )
 
-        augmented = self.parent.get(FormattedInputWorkflow).augmentedInputsDir.joinpath(imageFile.stem + '.csv')
+        augmented = self.parent.get(FormattedInputWorkflow).augmentedInputsDir.joinpath(
+            imageFile.stem + ".csv"
+        )
         if augmented.exists():
             # Allow augmentations to be rotated optimally
             useKwargs = kwargs.copy()
-            useKwargs['resizeOpts'] = {**resizeOpts, 'rotationDeg': PRJ_ENUMS.ROT_OPTIMAL}
+            useKwargs["resizeOpts"] = {
+                **resizeOpts,
+                "rotationDeg": PRJ_ENUMS.ROT_OPTIMAL,
+            }
             # Need to populate all fields in case label is an extra column
             augmentedDf = self.io.importCsv(augmented, keepExtraColumns=True)
             if not len(augmentedDf):
                 if returnDf:
                     return originalExport
                 return
-            augmentedDfWithAllFields = self.io.tableData.makeCompDf(len(augmentedDf)).set_index(augmentedDf.index, drop=True)
+            augmentedDfWithAllFields = self.io.tableData.makeCompDf(
+                len(augmentedDf)
+            ).set_index(augmentedDf.index, drop=True)
             augmentedDfWithAllFields.update(augmentedDf)
             self._finalizeSingleExport(
                 augmentedDfWithAllFields,
-                imageFile.stem + '_augmented',
+                imageFile.stem + "_augmented",
                 mapping,
                 useKwargs,
-                prioritizeById=True
+                prioritizeById=True,
             )
 
         if returnDf:
@@ -135,41 +157,49 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
         exported = self.io.exportCompImgsDf(df, **kwargs, **extraKwargs)
-        idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported['label']]
-        exported['numericLabel'] = mapping.index[idxs]
-        if self.input['forceVerticalOrientation']:
+        idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported["label"]]
+        exported["numericLabel"] = mapping.index[idxs]
+        if self.input["forceVerticalOrientation"]:
             exported = self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
         # Unjumble row ordering
-        colOrder = ['instanceId', 'label', 'numericLabel', 'offset', 'rotation', 'image', 'labelMask']
+        colOrder = [
+            "instanceId",
+            "label",
+            "numericLabel",
+            "offset",
+            "rotation",
+            "image",
+            "labelMask",
+        ]
         # Ensure everything requested is present
         assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
-        outputName = (self.compImgsDir / name).with_suffix('.pkl')
+        outputName = (self.compImgsDir / name).with_suffix(".pkl")
         compressionOptions = {"method": "zip", "archive_name": outputName.name}
         exported.to_pickle(outputName, compression=compressionOptions)
         return exported
 
     def maybeReorientCompImgs(
-      self,
-      df: pd.DataFrame,
-      vertices: t.Sequence[ComplexXYVertices],
+        self,
+        df: pd.DataFrame,
+        vertices: t.Sequence[ComplexXYVertices],
     ):
         """
         Ensures the width of all SMD components is less than the height (i.e. every component will have a "vertical"
         alignment"
         """
-        df['rotated'] = False
+        df["rotated"] = False
 
         for (idx, row), verts in zip(df.iterrows(), vertices):
             *rect, _orient = cv.minAreaRect(verts.stack())
-            rotPoints = cv.boxPoints((*rect, _orient - row['rotation']))
+            rotPoints = cv.boxPoints((*rect, _orient - row["rotation"]))
             xySpan = np.ptp(rotPoints, axis=0)
             # If width has a larger span than height, rotate so all components have the same preferred component
             # aspect
             if xySpan[0] > xySpan[1]:
-                for kk in 'image', 'labelMask':
+                for kk in "image", "labelMask":
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
-                df.at[idx, 'rotation'] += 90
+                df.at[idx, "rotation"] += 90
         return df
 
     def createMultipleCompImgs(self, fullImagesDir, inputFiles):
@@ -178,8 +208,8 @@ class ComponentImagesWorkflow(WorkflowDir):
             self.createCompImgsDfSingle,
             inputFiles,
             srcDir=fullImagesDir,
-            resizeOpts=self.input['resizeOpts'],
-            descr='Creating component image pickle files',
+            resizeOpts=self.input["resizeOpts"],
+            descr="Creating component image pickle files",
             debug=constants.DEBUG,
         )
 
@@ -189,7 +219,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         later
         """
         allDfs = []
-        for file in self.compImgsDir.glob('*.pkl'):
+        for file in self.compImgsDir.glob("*.pkl"):
             subdf = self.readDataframe(file)
             allDfs.append(subdf)
         featsConcat = pd.concat(allDfs, ignore_index=True)
@@ -198,13 +228,13 @@ class ComponentImagesWorkflow(WorkflowDir):
         return featsConcat
 
     def runWorkflow(
-      self,
-      imagesPath=None,
-      s3aProj: FilePath | dict = None,
-      labelField: PrjParam | str = None,
-      tryMergingComps=False,
-      resizeOpts: dict=None,
-      forceVerticalOrientation=False,
+        self,
+        imagesPath=None,
+        s3aProj: FilePath | dict = None,
+        labelField: PrjParam | str = None,
+        tryMergingComps=False,
+        resizeOpts: dict = None,
+        forceVerticalOrientation=False,
     ):
         """
         Entry point for creating image features
@@ -224,11 +254,13 @@ class ComponentImagesWorkflow(WorkflowDir):
         if labelField is not None:
             self.labelField = self.io.tableData.fieldFromName(labelField)
         if not self.labelField:
-            raise ValueError('A label field must be selected before images can be exported')
+            raise ValueError(
+                "A label field must be selected before images can be exported"
+            )
 
         files = self.parent.get(FormattedInputWorkflow).formattedFiles
 
-        generated = {f.stem for f in self.compImgsDir.glob('*.*')}
+        generated = {f.stem for f in self.compImgsDir.glob("*.*")}
         newFiles = fns.naturalSorted(f for f in files if f.stem not in generated)
         if newFiles:
             # Force label file to be recreated

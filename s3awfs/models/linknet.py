@@ -13,7 +13,7 @@ from tensorflow.keras.layers import (
     MaxPooling2D,
     Add,
     Conv2DTranspose,
-    Dropout
+    Dropout,
 )
 from tensorflow.keras.metrics import MeanIoU
 from tensorflow.keras.models import Model
@@ -25,20 +25,25 @@ from .tensorflow import TensorflowTrainingWorkflow, makeTensorflowStrategy
 from ..tvtsplit import TrainValidateTestSplitWorkflow
 from ..utils import NestedWorkflow
 
-def focal_tversky_loss(Y_true, Y_predicted, gamma = 0.75):
+
+def focal_tversky_loss(Y_true, Y_predicted, gamma=0.75):
     ti = tversky_index(Y_true, Y_predicted)
     ftl = K.pow((1 - ti), gamma)
     return ftl
 
-def tversky_index(Y_true, Y_predicted, alpha = 0.7):
+
+def tversky_index(Y_true, Y_predicted, alpha=0.7):
     Y_true = K.cast(Y_true, K.floatx())
     Y_true = K.flatten(Y_true)
     Y_predicted = K.flatten(Y_predicted)
     true_positive = K.sum(Y_true * Y_predicted)
     false_negative = K.sum(Y_true * (1 - Y_predicted))
     false_positive = K.sum((1 - Y_true) * Y_predicted)
-    ti = (true_positive + 1.0) / (true_positive + alpha * false_negative + (1 - alpha) * false_positive)
+    ti = (true_positive + 1.0) / (
+        true_positive + alpha * false_negative + (1 - alpha) * false_positive
+    )
     return ti
+
 
 def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
     Y_true = K.cast(Y_true, K.floatx())
@@ -46,18 +51,23 @@ def dice_coefficient(Y_true, Y_predicted, smoothness=1.0):
     Y_predicted = K.flatten(Y_predicted)
     Y_predicted = K.cast(Y_predicted, K.floatx())
     intersection = K.sum(Y_true * Y_predicted)
-    dc = (2.0 * intersection + smoothness) / (K.sum(Y_true) + K.sum(Y_predicted) + smoothness)
+    dc = (2.0 * intersection + smoothness) / (
+        K.sum(Y_true) + K.sum(Y_predicted) + smoothness
+    )
     return dc
 
+
 customObjects = {
-    'focal_tversky_loss': focal_tversky_loss,
-    'dice_coefficient': dice_coefficient
+    "focal_tversky_loss": focal_tversky_loss,
+    "dice_coefficient": dice_coefficient,
 }
+
 
 class LinkNet:
     """
     Class for the LinkNet Semantic Segmentation Neural Network
     """
+
     def __init__(self, inputShape: tuple, numClasses=2, dropout=0.5):
         """
         :param inputShape: Shape of the images processed by the network (w, h, nchans)
@@ -67,7 +77,11 @@ class LinkNet:
         self.input_layer = Input(self.input_tuple)
 
         self.conv1 = Conv2D(
-            filters=64, kernel_size=(7, 7), strides=2, kernel_initializer="random_normal", padding="same"
+            filters=64,
+            kernel_size=(7, 7),
+            strides=2,
+            kernel_initializer="random_normal",
+            padding="same",
         )(self.input_layer)
         self.conv1 = BatchNormalization()(self.conv1)
         self.conv1 = Activation("relu")(self.conv1)
@@ -90,25 +104,38 @@ class LinkNet:
         self.decoder1 = self._getDecoderBlock(self.decoder2, 64, 64)
 
         self.output_layer = Conv2DTranspose(
-            filters=32, kernel_size=(3, 3), strides=2, kernel_initializer="random_normal", padding="same"
+            filters=32,
+            kernel_size=(3, 3),
+            strides=2,
+            kernel_initializer="random_normal",
+            padding="same",
         )(self.decoder1)
         self.output_layer = BatchNormalization()(self.output_layer)
         self.output_layer = Activation("relu")(self.output_layer)
         self.output_layer = Dropout(dropout)(self.output_layer)
 
-        self.output_layer = Conv2D(filters=32, kernel_size=(3, 3), kernel_initializer="random_normal", padding="same")(
-            self.output_layer
-        )
+        self.output_layer = Conv2D(
+            filters=32,
+            kernel_size=(3, 3),
+            kernel_initializer="random_normal",
+            padding="same",
+        )(self.output_layer)
         self.output_layer = BatchNormalization()(self.output_layer)
         self.output_layer = Activation("relu")(self.output_layer)
         self.output_layer = Dropout(dropout)(self.output_layer)
 
         self.output_layer = Conv2DTranspose(
-            filters=numClasses, kernel_size=(2, 2), strides=2, kernel_initializer="random_normal", padding="same"
+            filters=numClasses,
+            kernel_size=(2, 2),
+            strides=2,
+            kernel_initializer="random_normal",
+            padding="same",
         )(self.output_layer)
         self.output_layer = Activation("softmax")(self.output_layer)
 
-        self.model = Model(inputs=self.input_layer, outputs=self.output_layer, name="LinkNet")
+        self.model = Model(
+            inputs=self.input_layer, outputs=self.output_layer, name="LinkNet"
+        )
 
     def _getEncoderBlock(self, input_layer, output_filters):
         """
@@ -118,26 +145,39 @@ class LinkNet:
         :return output_layer: Output layer of the encoder block.
         """
         output_layer = Conv2D(
-            filters=output_filters, kernel_size=(3, 3), strides=2, kernel_initializer="random_normal", padding="same"
+            filters=output_filters,
+            kernel_size=(3, 3),
+            strides=2,
+            kernel_initializer="random_normal",
+            padding="same",
         )(input_layer)
         output_layer = BatchNormalization()(output_layer)
         output_layer = Activation("relu")(output_layer)
 
         output_layer = Conv2D(
-            filters=output_filters, kernel_size=(3, 3), kernel_initializer="random_normal", padding="same"
+            filters=output_filters,
+            kernel_size=(3, 3),
+            kernel_initializer="random_normal",
+            padding="same",
         )(output_layer)
         output_layer = BatchNormalization()(output_layer)
         added_layer_1 = self._encoderAddLayers(input_layer, output_layer)
         output_layer = Activation("relu")(added_layer_1)
 
         output_layer = Conv2D(
-            filters=output_filters, kernel_size=(3, 3), kernel_initializer="random_normal", padding="same"
+            filters=output_filters,
+            kernel_size=(3, 3),
+            kernel_initializer="random_normal",
+            padding="same",
         )(output_layer)
         output_layer = BatchNormalization()(output_layer)
         output_layer = Activation("relu")(output_layer)
 
         output_layer = Conv2D(
-            filters=output_filters, kernel_size=(3, 3), kernel_initializer="random_normal", padding="same"
+            filters=output_filters,
+            kernel_size=(3, 3),
+            kernel_initializer="random_normal",
+            padding="same",
         )(output_layer)
         output_layer = BatchNormalization()(output_layer)
         added_layer_2 = self._encoderAddLayers(added_layer_1, output_layer)
@@ -154,7 +194,10 @@ class LinkNet:
         :param output_filters: Number of filters should be contained at the output of block.
         """
         output_layer = Conv2D(
-            filters=int(input_filters / 4), kernel_size=(1, 1), kernel_initializer="random_normal", padding="same"
+            filters=int(input_filters / 4),
+            kernel_size=(1, 1),
+            kernel_initializer="random_normal",
+            padding="same",
         )(input_layer)
         output_layer = BatchNormalization()(output_layer)
         output_layer = Activation("relu")(output_layer)
@@ -170,7 +213,10 @@ class LinkNet:
         output_layer = Activation("relu")(output_layer)
 
         output_layer = Conv2D(
-            filters=output_filters, kernel_size=(1, 1), kernel_initializer="random_normal", padding="same"
+            filters=output_filters,
+            kernel_size=(1, 1),
+            kernel_initializer="random_normal",
+            padding="same",
         )(output_layer)
         output_layer = BatchNormalization()(output_layer)
         output_layer = Activation("relu")(output_layer)
@@ -199,13 +245,14 @@ class LinkNet:
             )(layer_1)
         return Add()([layer_1, layer_2])
 
+
 def makeLinknetModel(
-  numClasses=2,
-  imageShape=(512,512,3),
-  dropout=0.5,
-  weightsFile=None,
-  outputFile=None,
-  strategy=None
+    numClasses=2,
+    imageShape=(512, 512, 3),
+    dropout=0.5,
+    weightsFile=None,
+    outputFile=None,
+    strategy=None,
 ):
     """
     Creates a h5 model file for the specified input layer topology. Optionally, a weights file can be specified
@@ -223,7 +270,13 @@ def makeLinknetModel(
         model.save(outputFile)
         model = outputFile
         strategy = None
-    return ProcessIO(model=model, strategy=strategy, customObjects=customObjects, compileOpts=compileOpts)
+    return ProcessIO(
+        model=model,
+        strategy=strategy,
+        customObjects=customObjects,
+        compileOpts=compileOpts,
+    )
+
 
 @lru_cache()
 def loadLinknetModel(file, strategy=None):
@@ -237,16 +290,23 @@ def loadLinknetModel(file, strategy=None):
     """
     strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
-       model = load_model(file, custom_objects=customObjects)
+        model = load_model(file, custom_objects=customObjects)
     return ProcessIO(strategy=strategy, model=model)
+
 
 class LinkNetTrainingWorkflow(NestedWorkflow):
     def __init__(self, name=None, **kwargs):
-        super().__init__(folder='')
+        super().__init__(folder="")
         self.addFunction(makeTensorflowStrategy, interactive=False)
         self.addFunction(makeLinknetModel, interactive=False)
         # Remove Tf training's directory since extra nesting is unnecessary
-        self.addWorkflow(TensorflowTrainingWorkflow, interactive=False, name=name, folder='', **kwargs)
+        self.addWorkflow(
+            TensorflowTrainingWorkflow,
+            interactive=False,
+            name=name,
+            folder="",
+            **kwargs
+        )
 
     @property
     def tensorWf(self):
@@ -255,25 +315,31 @@ class LinkNetTrainingWorkflow(NestedWorkflow):
 
     def loadAndTestModel(
         self,
-        testImagePaths: t.Sequence[FilePath]=None,
-        modelFile: FilePath=None,
-        outputDir=None
+        testImagePaths: t.Sequence[FilePath] = None,
+        modelFile: FilePath = None,
+        outputDir=None,
     ):
         if modelFile:
             modelFile = self.workflowDir / modelFile
         else:
             modelFile = self.tensorWf.savedModelFile
 
-        model = loadLinknetModel(modelFile)['model']
+        model = loadLinknetModel(modelFile)["model"]
         if testImagePaths:
             self.tensorWf.savedModelFile(model, testImagePaths, outputDir)
         return model
 
-    def loadAndTestWeights(self, weightsFile, testImagePaths: t.Sequence[FilePath]=None, numClasses=None, outputDir=None):
+    def loadAndTestWeights(
+        self,
+        weightsFile,
+        testImagePaths: t.Sequence[FilePath] = None,
+        numClasses=None,
+        outputDir=None,
+    ):
         classInfoFile = self.parent.get(TrainValidateTestSplitWorkflow).classInfoFile
         if numClasses is None and classInfoFile.exists():
-            numClasses = len(pd.read_csv(classInfoFile, usecols=['label']))
-        model = makeLinknetModel(numClasses, weightsFile=weightsFile)['model']
+            numClasses = len(pd.read_csv(classInfoFile, usecols=["label"]))
+        model = makeLinknetModel(numClasses, weightsFile=weightsFile)["model"]
         if testImagePaths is not None and len(testImagePaths):
             self.tensorWf.savePredictions(model, testImagePaths, outputDir=outputDir)
         return model

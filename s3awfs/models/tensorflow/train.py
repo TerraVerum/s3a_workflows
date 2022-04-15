@@ -11,7 +11,12 @@ import pandas as pd
 import tensorflow as tf
 from s3a import generalutils as gutils
 from tensorboard.backend.event_processing import event_accumulator
-from tensorflow.keras.callbacks import LambdaCallback, EarlyStopping, TensorBoard, ModelCheckpoint
+from tensorflow.keras.callbacks import (
+    LambdaCallback,
+    EarlyStopping,
+    TensorBoard,
+    ModelCheckpoint,
+)
 from tensorflow.keras.models import load_model, Model
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
@@ -24,26 +29,28 @@ from s3awfs.utils import WorkflowDir, RegisteredPath
 from .datagen import (
     dataGeneratorFromIter,
     SequenceDataGenerator,
-    SquareMaskSequenceDataGenerator
+    SquareMaskSequenceDataGenerator,
 )
 
-def makeTensorflowStrategy(strategyClass='OneDeviceStrategy', devices='/cpu:0'):
+
+def makeTensorflowStrategy(strategyClass="OneDeviceStrategy", devices="/cpu:0"):
     strat = getattr(tf.distribute, strategyClass)
     return ProcessIO(strategy=strat(devices))
+
 
 class TensorflowTrainingWorkflow(WorkflowDir):
     # Generated during workflow
     graphsDir = RegisteredPath()
-    savedModelFile = RegisteredPath('.h5')
+    savedModelFile = RegisteredPath(".h5")
     checkpointsDir = RegisteredPath()
     predictionsDir = RegisteredPath()
 
     def runWorkflow(
         self,
-        model: Model | FilePath=None,
+        model: Model | FilePath = None,
         resizeOpts=None,
-        customObjects: dict=None,
-        compileOpts: dict=None,
+        customObjects: dict = None,
+        compileOpts: dict = None,
         learningRate=0.001,
         batchSize=12,
         epochs=1000,
@@ -53,7 +60,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         bufferSize=1000,
         tensorboardUpdatesPerEpoch=0,
         strategy=None,
-        convertMasksToBbox=False
+        convertMasksToBbox=False,
     ):
         """
         Trains a LinkNet model
@@ -83,7 +90,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
         # Give a formatter that takes into account the starting epoch to avoid overwrites
-        epochFormatter = f'{{epoch:0{numEpochDigits}d}}'
+        epochFormatter = f"{{epoch:0{numEpochDigits}d}}"
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
 
         # Graphs don't play nice with old files
@@ -103,7 +110,9 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
         for typ in tvtWf.TRAIN_NAME, tvtWf.VALIDATION_NAME, tvtWf.TEST_NAME:
-            tvtFiles.append(summaryDf.loc[summaryDf['dataType'] == typ, 'compImageFile'])
+            tvtFiles.append(
+                summaryDf.loc[summaryDf["dataType"] == typ, "compImageFile"]
+            )
 
         classInfo = pd.read_csv(tvtWf.classInfoFile)
 
@@ -113,29 +122,39 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         tvtWf.resolver.setClassInfo(classInfo)
 
         batchKwargs = {}
-        if workers > 1 and tf.__version__ > '2.5':
-            batchKwargs['num_parallel_calls'] = workers
+        if workers > 1 and tf.__version__ > "2.5":
+            batchKwargs["num_parallel_calls"] = workers
 
         if workers <= 1:
-            constructor = SquareMaskSequenceDataGenerator if convertMasksToBbox else SequenceDataGenerator
+            constructor = (
+                SquareMaskSequenceDataGenerator
+                if convertMasksToBbox
+                else SequenceDataGenerator
+            )
         else:
+
             def constructor(**kwargs):
-                return dataGeneratorFromIter(**kwargs) \
-                    .shuffle(bufferSize, reshuffle_each_iteration=True) \
-                    .batch(batchSize, **batchKwargs) \
+                return (
+                    dataGeneratorFromIter(**kwargs)
+                    .shuffle(bufferSize, reshuffle_each_iteration=True)
+                    .batch(batchSize, **batchKwargs)
                     .prefetch(max(1, bufferSize // 10))
-        resizeOpts = resizeOpts or dict(shape=(512,512))
+                )
+
+        resizeOpts = resizeOpts or dict(shape=(512, 512))
         generators = [
             constructor(
                 ownedImageNames=nameList,
-                imagesDir=dir_/PEW.imagesDir,
-                labelMasksDir=dir_/PEW.labelMasksDir,
-                imageShape=(*resizeOpts['shape'], 3),
+                imagesDir=dir_ / PEW.imagesDir,
+                labelMasksDir=dir_ / PEW.labelMasksDir,
+                imageShape=(*resizeOpts["shape"], 3),
                 numOutputClasses=tvtWf.resolver.numClasses,
                 batchSize=batchSize,
-                shuffle=True
+                shuffle=True,
             )
-            for nameList, dir_ in zip(tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir])
+            for nameList, dir_ in zip(
+                tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir]
+            )
         ]
         trainGenerator, valGenerator, testGenerator = generators
 
@@ -148,28 +167,27 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         if model is None:
             model = self.savedModelFile
         compileOpts = compileOpts or {}
-        compileOpts['optimizer'] = Adam(learning_rate=learningRate)
+        compileOpts["optimizer"] = Adam(learning_rate=learningRate)
         with strategy.scope():
             if isinstance(model, FilePath.__args__):
                 overwriteFile = model
                 model = load_model(model, custom_objects=customObjects)
             model.compile(**compileOpts)
 
-
         if tensorboardUpdatesPerEpoch <= 1:
-            updateFreq = 'epoch'
+            updateFreq = "epoch"
         else:
-            updateFreq = calcNumBatches(tvtFiles[0])//tensorboardUpdatesPerEpoch
+            updateFreq = calcNumBatches(tvtFiles[0]) // tensorboardUpdatesPerEpoch
         linknetTensorboard = TensorBoard(
             log_dir=self.graphsDir,
             histogram_freq=0,
             write_graph=True,
             write_images=True,
-            update_freq=updateFreq
+            update_freq=updateFreq,
         )
         # Allow save directory to have an epoch offset
         linknetModelcheckpoint = ModelCheckpoint(
-            filepath=self.checkpointsDir / (epochFormatter + '.h5'),
+            filepath=self.checkpointsDir / (epochFormatter + ".h5"),
             verbose=0,
             save_freq="epoch",
         )
@@ -182,17 +200,21 @@ class TensorflowTrainingWorkflow(WorkflowDir):
 
         if predictionDuringTrainPath is not None:
             predictionDuringTrainPath = Path(predictionDuringTrainPath)
-            labels = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', na_filter=False)['label']
+            labels = pd.read_csv(
+                tvtWf.classInfoFile, index_col="numeric_class", na_filter=False
+            )["label"]
+
             def predictAfterEpoch(epoch, logs):
                 # Calculate test files in function so they can be swapped out by the user in between
                 # epochs if desired
-                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob('*.png'))
+                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob("*.png"))
 
                 # Add 1 to match naming scheme of ModelCheckpoint
                 epoch += 1
-                outDir = self.predictionsDir/epochFormatter.format(epoch=epoch)
+                outDir = self.predictionsDir / epochFormatter.format(epoch=epoch)
                 self.savePredictions(model, testFiles, outDir)
                 PEW(outDir).createOverlays(labels=labels)
+
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
         if workers > 1:
@@ -207,7 +229,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             validation_steps=valSteps,
             callbacks=linknetCallbacks,
             initial_epoch=initialEpoch,
-            **moreKwargs
+            **moreKwargs,
         )
 
         model.evaluate(testGenerator, steps=testSteps)
@@ -215,7 +237,9 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         model.save(self.savedModelFile)
         # Only need to save final if there was no intermediate saving
         if predictionDuringTrainPath is None:
-            testFiles = fns.naturalSorted(tvtWf.testDir.joinpath(PEW.imagesDir).glob('*.png'))
+            testFiles = fns.naturalSorted(
+                tvtWf.testDir.joinpath(PEW.imagesDir).glob("*.png")
+            )
             self.savePredictions(model, testFiles)
         self.export_training_data()
         if overwriteFile is not None:
@@ -238,12 +262,14 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         try:
             tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
             pngWf = self.parent.get(PngExportWorkflow)
-            labelMap = pd.read_csv(tvtWf.classInfoFile, index_col='numeric_class', dtype=str)['label'].drop_duplicates()
+            labelMap = pd.read_csv(
+                tvtWf.classInfoFile, index_col="numeric_class", dtype=str
+            )["label"].drop_duplicates()
             # 0 is background but will appear in the label map
             labelMap = labelMap.drop(index=0)
         except (FileNotFoundError, KeyError, AttributeError):
             # Labelmap doesn't exist / parent not specified
-            pngWf = PngExportWorkflow('')
+            pngWf = PngExportWorkflow("")
             labelMap = None
         if model.output_shape[-1] <= 2:
             # No need for a legend if there's only foreground/background (2 output classes)
@@ -257,7 +283,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             img = np.array([img], dtype=np.uint8)
             prediction = model.predict(img)[0]
             prediction = np.argmax(prediction, axis=-1).astype(np.uint8)
-            outFile = outputDir.joinpath(os.path.basename(file)).with_suffix('.jpg')
+            outFile = outputDir.joinpath(os.path.basename(file)).with_suffix(".jpg")
             oldMap = pngWf.compositor.labelToNameMapping
             pngWf.compositor.updateLabelMap(labelMap)
             pngWf.overlayMaskOnImage(img[0], prediction, outFile)
@@ -271,15 +297,17 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         Uses the tensorboard library to generate a CSV file of the training data for a specific model, with the data containing the specific Loss, Accuracy, Mean IoU, and Dice Coefficient values at each epoch the model is trained. Saves the csv files in the <BASE_PATH>/Graphs/<NETWORK_MODEL>/Training Values path with the training session name as the file name.
         :return values_df: The dataframe of the different metric values for each training epoch.
         """
-        for subpath in 'train', 'validation':
+        for subpath in "train", "validation":
             self.graphsDir.joinpath(subpath).mkdir(exist_ok=True)
         graph_path = self.graphsDir
-        csv_path = f'{graph_path}.csv'
+        csv_path = f"{graph_path}.csv"
         if os.path.isfile(csv_path):
             values_df = pd.read_csv(csv_path)
         else:
-            ea_train = event_accumulator.EventAccumulator(str(graph_path / 'train'))
-            ea_validation = event_accumulator.EventAccumulator(str(graph_path / 'validation'))
+            ea_train = event_accumulator.EventAccumulator(str(graph_path / "train"))
+            ea_validation = event_accumulator.EventAccumulator(
+                str(graph_path / "validation")
+            )
             ea_train.Reload()
             ea_validation.Reload()
             train_values = []
@@ -288,15 +316,25 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             if not scalars:
                 return
             for scalar in scalars:
-                train_values.append([scalar_event.value for scalar_event in ea_train.Scalars(scalar)])
-                validation_values.append([scalar_event.value for scalar_event in ea_validation.Scalars(scalar)])
+                train_values.append(
+                    [scalar_event.value for scalar_event in ea_train.Scalars(scalar)]
+                )
+                validation_values.append(
+                    [
+                        scalar_event.value
+                        for scalar_event in ea_validation.Scalars(scalar)
+                    ]
+                )
             values = train_values + validation_values
             values = np.array(values)
             values = np.transpose(values)
             values_df = pd.DataFrame(values)
             values_df.index.name = "Epoch"
             values_df.columns = pd.MultiIndex.from_product(
-                [["Train", "Validation"], ["Loss", "Accuracy", "Mean IoU", "Dice Coefficient"]]
+                [
+                    ["Train", "Validation"],
+                    ["Loss", "Accuracy", "Mean IoU", "Dice Coefficient"],
+                ]
             )
             values_df.to_csv(csv_path)
         return values_df
