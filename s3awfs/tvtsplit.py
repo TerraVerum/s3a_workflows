@@ -66,7 +66,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
                 processedMaskColors.append(cmap)
 
         for outputName, inputMaskOrName in outputToMaskNameMap.items():
-            for cmap in maskColors:
+            for cmap in processedMaskColors:
                 dir_ = cmapDirMapping[cmap]
                 fullOutputName = dir_.joinpath(outputName)
                 # Delay reading input for as long as possible
