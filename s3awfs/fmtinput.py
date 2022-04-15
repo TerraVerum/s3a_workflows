@@ -104,7 +104,7 @@ class FormattedInputWorkflow(WorkflowDir):
         augmentedComps[RTF.IMG_FILE] = imageFile
         defaultIo.exportCsv(
             augmentedComps,
-            self.augmentedInputsDir / imageFile.replace(".png", ".csv"),
+            self.augmentedInputsDir / Path(imageFile).with_suffix(".csv"),
             readonly=False,
         )
         return augmentedComps
