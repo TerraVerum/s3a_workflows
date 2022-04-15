@@ -11,7 +11,8 @@ primitive:
       s3aProj #: S3A project that knows how to deserialize component data
       resizeOpts:
         shape: [512, 512]
-  - s3awfs.png.PngExportWorkflow
+  - s3awfs.png.PngExportWorkflow:
+      overlayOpts: null # Set to dict with "opacity" (between 0->1) and "colormap" keys
   - s3awfs.tvtsplit.TrainValidateTestSplitWorkflow:
       labelMap: null # optional label alias file, must contain numeric_label and label columns
       valPct: 0.15
