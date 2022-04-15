@@ -56,9 +56,15 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         # Force "None" to be the first colormap of the set to ensure that
         # file copying takes place when there is no alias mapping.
         # This is much faster in cases where the image data never needs to be read
-        maskColors = [None] + [
-            m for m in maskColors if m is not None and m in cmapDirMapping
-        ]
+        processedMaskColors = [None]
+        for cmap in maskColors:
+            if cmap in processedMaskColors:
+                continue
+            if cmap.lower() == "default":
+                processedMaskColors.append(constants.DEFAULT_RGB_CMAP)
+            else:
+                processedMaskColors.append(cmap)
+
         for outputName, inputMaskOrName in outputToMaskNameMap.items():
             for cmap in maskColors:
                 dir_ = cmapDirMapping[cmap]

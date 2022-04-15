@@ -128,6 +128,9 @@ class PngExportWorkflow(WorkflowDir):
             labels[labels.str.len() == 0] = "<blank>"
         oldProps = dict(self.compositor.propertiesProc.input)
         self.compositor.updateLabelMap(labels)
+        # Account for possible "default" colormap
+        if overlayOpts.get("colormap", "default").lower() == "default":
+            overlayOpts["colormap"] = constants.DEFAULT_RGB_CMAP
         self.compositor.propertiesProc(**(overlayOpts or {}))
         existingIms = {im.stem for im in self.overlaysDir.glob("*.*")}
         imgList = fns.naturalSorted(
