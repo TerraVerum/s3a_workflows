@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import math
 import os
-import shutil
-import tempfile
 import typing as t
 from pathlib import Path
 
@@ -12,11 +10,11 @@ import pandas as pd
 import pyqtgraph as pg
 from sklearn.model_selection import train_test_split
 from utilitys import fns
+from utilitys.typeoverloads import FilePath
 
 from . import constants
-from .compimgs import ComponentImagesWorkflow
 from .png import PngExportWorkflow
-from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, NestedWorkflow
+from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, getLinkFunc
 
 _defaultMaskColors = (None, 'binary', constants.DEFAULT_RGB_CMAP)
 
@@ -24,6 +22,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
     """
     Turns masks with potentially many-to-one label mappings to sequentially numbered output values
     """
+
     rgbMasksDir = RegisteredPath()
     binaryMasksDir = RegisteredPath()
     labelMasksDir = RegisteredPath()
@@ -34,8 +33,11 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         resolver: AliasedMaskResolver,
         outputNames: t.Sequence[str] = None,
         maskColors=_defaultMaskColors,
-        treatAsCache=False
+        maxNumericLabel: int=None,
+        treatAsCache=False,
     ):
+        if not len(labelMaskFiles):
+            return
         if outputNames is None:
             outputNames = labelMaskFiles
         outputNames = np.array([os.path.basename(name) for name in outputNames])
@@ -44,38 +46,65 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
                 self._getNewAndDeleteUnusedImages(outputNames, subdir)
         cmapDirMapping = {
+            **{color: self.rgbMasksDir for color in pg.colormap.listMaps()},
             None: self.labelMasksDir,
-            'binary': self.binaryMasksDir,
-            'viridis': self.rgbMasksDir
+            "binary": self.binaryMasksDir,
         }
 
-        for cmap in {*maskColors, None}:
-            if cmap in cmapDirMapping:
+        outputToMaskNameMap = dict(zip(outputNames, labelMaskFiles))
+        # Force "None" to be the first colormap of the set to ensure that
+        # file copying takes place when there is no alias mapping.
+        # This is much faster in cases where the image data never needs to be read
+        maskColors = [None] + [
+            m for m in maskColors if m is not None and m in cmapDirMapping
+        ]
+        for outputName, inputMaskOrName in outputToMaskNameMap.items():
+            for cmap in maskColors:
                 dir_ = cmapDirMapping[cmap]
-            elif cmap in pg.colormap.listMaps():
-                dir_ = self.rgbMasksDir
-            else:
-                continue
-            outputToMaskNameMap = dict(zip(outputNames, labelMaskFiles))
-            existingNames = {f.name for f in dir_.glob('*.*')}
-            toGenerate = set(outputToMaskNameMap).difference(existingNames)
-            for filename in toGenerate:
-                mask = resolver.getMaybeResolve(outputToMaskNameMap[filename])
-                # Don't fetch inside "generate" to avoid re-reading the same mask every iteration. Out here,
-                # a numpy mask can be loaded over the filename
-                resolver.generateColoredMask(mask, dir_ / filename, resolver.numClasses, cmap, resolve=False)
+                fullOutputName = dir_.joinpath(outputName)
+                # Delay reading input for as long as possible
+                inputMaskOrName = self._resolveInputAndExportSingleMask(
+                    inputMaskOrName, fullOutputName, cmap, resolver, maxNumericLabel
+                )
+
+    @staticmethod
+    def _resolveInputAndExportSingleMask(
+        inputMaskOrName, outputName, cmap, resolver, maxNumericLabel
+    ):
+        if os.path.exists(outputName):
+            return inputMaskOrName
+        if (
+            (not resolver.hasClassInfo)
+            and cmap is None
+            and isinstance(inputMaskOrName, FilePath.__args__)
+        ):
+            # Special case: can copy output to input
+            getLinkFunc()(inputMaskOrName, outputName)
+            return inputMaskOrName
+        # else reading the label image is required, try adding class info
+        # from all labels so coloring is consistent
+        numClasses = maxNumericLabel + 1
+        if resolver.hasClassInfo:
+            numClasses = resolver.numClasses
+        inputMaskOrName = resolver.getMaybeResolve(inputMaskOrName)
+        resolver.generateColoredMask(
+            inputMaskOrName, outputName, numClasses, cmap, resolve=False
+        )
+        return inputMaskOrName
 
     @staticmethod
     def _getNewAndDeleteUnusedImages(shouldExist: t.Sequence[str], folder: Path):
-        existing = {im.name for im in folder.glob('*.png')}
+        existing = {im.name for im in folder.glob("*.png")}
         shouldExist = set(shouldExist)
         for file in existing.difference(shouldExist):
             # These already exist, but shouldn't under the present mapping
             os.unlink(os.path.join(folder, file))
         return shouldExist.difference(existing)
 
+
 class TrainValidateTestSplitWorkflow(WorkflowDir):
-    resolver = AliasedMaskResolver()
+    resolver: AliasedMaskResolver
+    maxNumericLabel: int
 
     TRAIN_NAME = 'train'
     VALIDATION_NAME = 'val'
@@ -91,7 +120,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def runWorkflow(
         self,
-        labelMap: pd.DataFrame | str | Path=None,
+        labelMap: pd.DataFrame | str | Path = None,
         balanceClasses=True,
         balanceFunc='median',
         valPct=0.15,
@@ -122,16 +151,16 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         """
         labelMap = self._resolveLabelMap(labelMap)
         exportWf = self.parent.get(PngExportWorkflow)
-        fullSummary = pd.read_csv(exportWf.summaryFile)
         if self.filteredSummaryFile.exists():
             summary = pd.read_csv(self.filteredSummaryFile, na_filter=False)
         else:
             summary = self.createGetFilteredSummaryDf(
-                fullSummary,
-                labelMap
+                pd.read_csv(exportWf.summaryFile), labelMap
             )
-        self.resolver = AliasedMaskResolver(labelMap['label'])
-        self.resolver.classInfo.to_csv(self.classInfoFile)
+        self.maxNumericLabel = summary['numericLabel'].max()
+        self.resolver = AliasedMaskResolver(labelMap)
+        if self.resolver.hasClassInfo:
+            self.resolver.classInfo.to_csv(self.classInfoFile)
 
         datasets = []
         for dir_, typ in zip([self.trainDir, self.validateDir, self.testDir], [self.TRAIN_NAME, self.VALIDATION_NAME, self.TEST_NAME]):
@@ -150,7 +179,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
 
     def _exportDatatypePortion(self, dirAndData: dict, exportWf: PngExportWorkflow):
         PEW = PngExportWorkflow
-        linkFunc = self._getLinkFunc()
+        linkFunc = getLinkFunc()
         destDir = dirAndData['dir']
         df = dirAndData['data']
         maskWf = LabelMaskResolverWorkflow(destDir, createDirs=True)
@@ -161,6 +190,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             ),
             self.resolver,
             maskColors=self.input['maskColors'],
+            maxNumericLabel=self.maxNumericLabel,
             treatAsCache=True
         )
 
@@ -186,10 +216,9 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         filtered.to_csv(self.filteredSummaryFile, index=False)
         return filtered
 
-    def _resolveLabelMap(self, labelMap: pd.DataFrame | str=None):
+    def _resolveLabelMap(self, labelMap: pd.DataFrame | str = None):
         if labelMap is None:
-            # warnings.warn(f'Since labelMap is *None*, "{self.name}" will default to using all raw labels.', UserWarning)
-            labelMap = self.parent.get(ComponentImagesWorkflow).allLabelsFile
+            return None
         if not isinstance(labelMap, (pd.Series, pd.DataFrame)):
             labelMap = pd.read_csv(labelMap, index_col='numeric_label')
         if 'numeric_label' in labelMap.columns:
@@ -256,23 +285,6 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         summaryDf.loc[testIds, 'dataType'] = self.TEST_NAME
         summaryDf.loc[valIds, 'dataType'] = self.VALIDATION_NAME
         return summaryDf
-
-    @staticmethod
-    def _getLinkFunc():
-        """
-        Symlinks rarely have permission by default on windows so be able to copy if needed
-        """
-        # Use symlinks to avoid lots of file duplication
-        try:
-            linkFunc = os.symlink
-            with tempfile.TemporaryDirectory() as td:
-                src: Path = Path(td) / 'test'
-                src.touch()
-                linkFunc(src, src.with_name('testlink'))
-        except (PermissionError, OSError):
-            linkFunc = shutil.copy
-        return linkFunc
-
 
     def createDirs(self, excludeExprs=('.',)):
         super().createDirs(excludeExprs)

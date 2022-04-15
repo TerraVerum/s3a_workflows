@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import copy
+import functools
 import inspect
 import os.path
 import re
 import shutil
+import tempfile
 import typing as t
 from pathlib import Path
 
@@ -270,7 +271,7 @@ def argparseHelpAction(nested: NestedWorkflow):
     return NestedWorkflowHelp
 
 class AliasedMaskResolver:
-    classInfo: pd.DataFrame
+    classInfo: t.Optional[pd.DataFrame]
 
     def __init__(
         self,
@@ -283,14 +284,20 @@ class AliasedMaskResolver:
             and the value is the class label (can also be numeric)
         """
         self.masksDir = labelMasksDir or Path()
-
         self.hasClassInfo = numberLabelMap is not None
-        if not self.hasClassInfo:
-            # Accept all labels as unique
-            numberLabelMap = np.arange(np.iinfo('uint16').max)
-        self.setNumberLabelMap(numberLabelMap)
+        self.classInfo = None
+        if self.hasClassInfo:
+            # Also sets classInfo
+            self.setNumberLabelMap(numberLabelMap)
 
     def setNumberLabelMap(self, numberLabelMap):
+        if isinstance(numberLabelMap, pd.DataFrame):
+            if "label" in numberLabelMap:
+                numberLabelMap = numberLabelMap["label"]
+            else:
+                raise ValueError(
+                    "Setting label map with dataframe must have a 'label' column"
+                )
         if not isinstance(numberLabelMap, pd.Series):
             numberLabelMap = pd.Series(numberLabelMap, numberLabelMap)
         self.classInfo = self._createOutputClassMapping(numberLabelMap)
@@ -320,7 +327,7 @@ class AliasedMaskResolver:
 
     @property
     def numClasses(self):
-        return len(self.classInfo['numeric_class'].unique()) if self.hasClassInfo else None
+        return self.classInfo['numeric_class'].max() + 1 if self.hasClassInfo else None
 
     def generateColoredMask(
         self,
@@ -353,7 +360,7 @@ class AliasedMaskResolver:
             gutils.cvImsaveRgb(outputFile, (labelMask > 0).astype('uint8') * 255)
             return
         if numClasses is None:
-            numClasses = np.max(labelMask)
+            numClasses = np.max(labelMask) + 1
         allColors = pg.colormap.get(colorMap).getLookupTable(nPts=numClasses)
         item = pg.ImageItem(labelMask, levels=[0, numClasses])
         item.setLookupTable(allColors, update=True)
@@ -363,12 +370,31 @@ class AliasedMaskResolver:
         if isinstance(mask, FilePath.__args__):
             mask = gutils.cvImreadRgb(self.masksDir/mask, cv.IMREAD_UNCHANGED)
         # Only keep known labels
-        if not resolve:
+        if not resolve or not self.hasClassInfo:
             return mask
         mask[(mask > 0) & np.isin(mask, self.classInfo.index.to_numpy(), invert=True)] = 0
         # Account for aliasing
         mask[mask > 0] = self.classInfo.loc[mask[mask > 0], 'numeric_class'].to_numpy(int)
         return mask
+
+# Will be the same on a platform so can be cached
+@functools.lru_cache()
+def getLinkFunc():
+    """
+    Symlinks rarely have permission by default on windows so be able to copy if needed
+    """
+    # Use symlinks to avoid lots of file duplication
+    def relativeSymlink(src, dst):
+        return os.symlink(os.path.relpath(src, os.path.dirname(dst)), dst)
+    try:
+        linkFunc = relativeSymlink
+        with tempfile.TemporaryDirectory() as td:
+            src: Path = Path(td) / 'test'
+            src.touch()
+            linkFunc(src, src.with_name('testlink'))
+    except (PermissionError, OSError):
+        linkFunc = shutil.copy
+    return linkFunc
 
 _DISCARDED = object()
 def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
@@ -411,14 +437,14 @@ class DirCreator(WorkflowDir):
         self.parent.createDirs()
 
 def pathCtor(constructor, node):
-  return Path(constructor.construct_scalar(node))
+    return Path(constructor.construct_scalar(node))
 fns.loader.constructor.add_constructor('!Path', pathCtor)
 
 class WorkflowEditor(AlgParamEditor):
-  def _resolveProccessor(self, proc):
-    retProc = super()._resolveProccessor(proc)
-    if isinstance(retProc, Workflow_T):
-      # Only one top processor can exist, so setting the workflow dir on subfolders
-      # will keep each primitive proc at the saveDir level
-      retProc.localFolder = self.saveDir
-    return retProc
+    def _resolveProccessor(self, proc):
+        retProc = super()._resolveProccessor(proc)
+        if isinstance(retProc, Workflow_T):
+            # Only one top processor can exist, so setting the workflow dir on subfolders
+            # will keep each primitive proc at the saveDir level
+            retProc.localFolder = self.saveDir
+        return retProc
