@@ -31,15 +31,21 @@ def minDim(img):
 propNames = list(regionprops(np.ones((5, 5), int))[0]) + ["aspect"]
 for unused in [
     "convex_image",
+    "image_convex",
     "coords",
     "filled_image",
+    "image_filled",
+    "intensity_image",
+    "image_intensity",
     "image",
     "centroid",
     "label",
     "moments",
     "slice",
 ]:
-    propNames.remove(unused)
+    if unused in propNames:
+        # May or may not exist depending on scikit version
+        propNames.remove(unused)
 
 
 class RegionPropertiesWorkflow(WorkflowDir):
