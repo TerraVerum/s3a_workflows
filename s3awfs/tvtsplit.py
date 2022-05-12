@@ -28,6 +28,12 @@ class LabelMaskResolverWorkflow(WorkflowDir):
     binaryMasksDir = RegisteredPath()
     labelMasksDir = RegisteredPath()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.pgColormapNames = {
+            color: self.rgbMasksDir for color in fns.listAllPgColormaps()
+        }
+
     def runWorkflow(
         self,
         labelMaskFiles: t.List[Path | np.ndarray],
@@ -47,7 +53,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
             for subdir in self.labelMasksDir, self.binaryMasksDir, self.rgbMasksDir:
                 self._getNewAndDeleteUnusedImages(outputNames, subdir)
         cmapDirMapping = {
-            **{color: self.rgbMasksDir for color in pg.colormap.listMaps()},
+            **self.pgColormapNames,
             None: self.labelMasksDir,
             "binary": self.binaryMasksDir,
         }

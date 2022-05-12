@@ -1,5 +1,5 @@
 s3a>=0.6.1
-utilitys>=0.4.4
+utilitys>=0.5.1
 scikit-learn
 imageio
 numpy
