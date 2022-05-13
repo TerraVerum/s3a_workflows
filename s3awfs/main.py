@@ -110,6 +110,11 @@ class MainWorkflow(NestedWorkflow):
             return cls.fromClassicConfig(config, folder, run, writeConfig, **kwargs)
         if workflow is not None:
             fullConfig["active"] = workflow
+        if "active" not in fullConfig:
+            raise ValueError(
+                "Must either pass workflow as an argument or specify"
+                " 'active' workflow in config. Neither found."
+            )
         editor.loadParamValues(config, fullConfig)
         proc: NestedWorkflow = editor.curProcessor.processor
         saveName = Path(config).resolve()
