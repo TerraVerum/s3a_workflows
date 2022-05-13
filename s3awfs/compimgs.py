@@ -94,10 +94,6 @@ class ComponentImagesWorkflow(WorkflowDir):
         mapping = self.createGetLabelMapping()
 
         labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
-        if isinstance(labelCol, str):
-            labelColAsParam = PrjParam(labelCol, "")
-            csvDf = csvDf.rename(columns={labelCol: labelColAsParam})
-            labelCol = labelColAsParam
         # Limits can always be set, since they will be ignored where not used
         labelCol.opts.setdefault("limits", mapping.to_list())
         if resizeOpts is None or "shape" not in resizeOpts:
