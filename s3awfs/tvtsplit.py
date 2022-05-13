@@ -7,13 +7,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pyqtgraph as pg
 from sklearn.model_selection import train_test_split
 from utilitys import fns
 from utilitys.typeoverloads import FilePath
 
 from . import constants
 from .png import PngExportWorkflow
+from .compimgs import ComponentImagesWorkflow
 from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, getLinkFunc
 
 _defaultMaskColors = (None, "binary", constants.DEFAULT_RGB_CMAP)
@@ -173,6 +173,12 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         self.resolver = AliasedMaskResolver(labelMap)
         if self.resolver.hasClassInfo:
             self.resolver.classInfo.to_csv(self.classInfoFile)
+        else:
+            # No class info provided, so just use all labels as classes
+            allLabelsFile = self.parent.get(ComponentImagesWorkflow).allLabelsFile
+            labelsSer = pd.read_csv(allLabelsFile, index_col="numeric_label")["label"]
+            classInfo = self.resolver.createOutputClassMapping(labelsSer)
+            classInfo.to_csv(self.classInfoFile)
 
         datasets = []
         for dir_, typ in zip(

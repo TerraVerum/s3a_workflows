@@ -310,7 +310,7 @@ class AliasedMaskResolver:
                 )
         if not isinstance(numberLabelMap, pd.Series):
             numberLabelMap = pd.Series(numberLabelMap, numberLabelMap)
-        self.classInfo = self._createOutputClassMapping(numberLabelMap)
+        self.classInfo = self.createOutputClassMapping(numberLabelMap)
         self.hasClassInfo = True
 
     def setClassInfo(self, classInfoDf: pd.DataFrame):
@@ -320,7 +320,7 @@ class AliasedMaskResolver:
         self.hasClassInfo = True
 
     @staticmethod
-    def _createOutputClassMapping(outputClasses: pd.Series):
+    def createOutputClassMapping(outputClasses: pd.Series):
         """
         Resolves potential aliases in the output class mapping for unambiguous mask value to class number matching
         """
