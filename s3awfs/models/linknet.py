@@ -18,12 +18,15 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.metrics import MeanIoU
 from tensorflow.keras.models import Model
 from tensorflow.keras.models import load_model
-
 from utilitys import ProcessIO
 from utilitys.typeoverloads import FilePath
+from s3a.generalutils import cvImreadRgb
+from s3a import cv2 as cv
+
 from .tensorflow import TensorflowTrainingWorkflow, makeTensorflowStrategy
+from ..png import PngExportWorkflow as PEW
 from ..tvtsplit import TrainValidateTestSplitWorkflow
-from ..utils import NestedWorkflow
+from ..utils import NestedWorkflow, WorkflowDir
 
 
 def focal_tversky_loss(Y_true, Y_predicted, gamma=0.75):
@@ -294,9 +297,44 @@ def loadLinknetModel(file, strategy=None):
     return ProcessIO(strategy=strategy, model=model)
 
 
+class LinknetParamInferrer(WorkflowDir):
+    def __init__(self, name=None, folder=None, **kwargs):
+        folder = folder or ""
+        super().__init__(name, folder, **kwargs)
+
+    def runWorkflow(self, **kwargs):
+        """
+        If data parameters are attached to the workflow, grabs the number of classes
+        and image size from them
+        """
+        tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
+        numClasses = None
+        if tvtWf.classInfoFile.exists():
+            numClasses = pd.read_csv(tvtWf.classInfoFile)["numeric_class"].max() + 1
+
+        imageShape = None
+        trainImagesDir = tvtWf.trainDir / PEW.imagesDir
+        imageGlob = trainImagesDir.glob("*.png")
+        try:
+            imageName = next(imageGlob)
+        except StopIteration:
+            # No images to infer input size
+            pass
+        else:
+            image = cvImreadRgb(imageName, cv.IMREAD_UNCHANGED)
+            imageShape = image.shape
+
+        makeLinkWf = self.parent.get("Make Linknet Model", missingOk=False)
+        if numClasses is not None:
+            makeLinkWf.input["numClasses"] = numClasses
+        if imageShape is not None:
+            makeLinkWf.input["imageShape"] = imageShape
+
+
 class LinkNetTrainingWorkflow(NestedWorkflow):
     def __init__(self, name=None, **kwargs):
         super().__init__(folder="")
+        self.addWorkflow(LinknetParamInferrer, interactive=False)
         self.addFunction(makeTensorflowStrategy, interactive=False)
         self.addFunction(makeLinknetModel, interactive=False)
         # Remove Tf training's directory since extra nesting is unnecessary
