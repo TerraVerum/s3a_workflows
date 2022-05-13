@@ -16,7 +16,7 @@ import pandas as pd
 import pyqtgraph as pg
 from s3a import generalutils as gutils
 from s3a.parameditors.algcollection import AlgParamEditor
-from utilitys import NestedProcess, ProcessStage
+from utilitys import NestedProcess, ProcessStage, PrjParam
 from utilitys import fns, AtomicProcess
 from utilitys.typeoverloads import FilePath
 
@@ -446,6 +446,16 @@ def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
             del item[kk]
     return item
 
+
+def columnsAsPrjParams(df, assignToDf=False):
+    cols = list(df.columns)
+    for ii, col in enumerate(cols):
+        if not isinstance(col, PrjParam):
+            cols[ii] = PrjParam(col, type(col)())
+    if assignToDf:
+        df.columns = cols
+        return df
+    return cols
 
 class DirCreator(WorkflowDir):
     """

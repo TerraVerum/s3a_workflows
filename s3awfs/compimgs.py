@@ -15,7 +15,7 @@ from utilitys.typeoverloads import FilePath
 
 from . import constants
 from .fmtinput import FormattedInputWorkflow
-from .utils import WorkflowDir, RegisteredPath
+from .utils import WorkflowDir, RegisteredPath, columnsAsPrjParams
 
 
 class ComponentImagesWorkflow(WorkflowDir):
@@ -87,7 +87,10 @@ class ComponentImagesWorkflow(WorkflowDir):
         Turns a csv annotation of a single image into a dataframe of cropped components from that image
         """
         srcDir = Path(srcDir)
-        csvDf = self.io.importCsv(file, keepExtraFields=True, addMissingFields=True)
+        csvDf = columnsAsPrjParams(
+            self.io.importCsv(file, keepExtraFields=True, addMissingFields=True),
+            assignToDf=True,
+        )
         mapping = self.createGetLabelMapping()
 
         labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
