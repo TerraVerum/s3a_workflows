@@ -114,12 +114,11 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                 summaryDf.loc[summaryDf["dataType"] == typ, "compImageFile"]
             )
 
-        classInfo = pd.read_csv(tvtWf.classInfoFile)
+        tvtWf.resolver.setClassInfo(pd.read_csv(tvtWf.classInfoFile))
 
         earlyStopping = EarlyStopping(monitor="val_loss", min_delta=0.0000, patience=10)
 
         PEW = PngExportWorkflow
-        tvtWf.resolver.setClassInfo(classInfo)
 
         batchKwargs = {}
         if workers > 1 and tf.__version__ > "2.5":
@@ -213,7 +212,6 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                 epoch += 1
                 outDir = self.predictionsDir / epochFormatter.format(epoch=epoch)
                 self.savePredictions(model, testFiles, outDir)
-                PEW(outDir).createOverlays(labels=labels)
 
             linknetCallbacks.append(LambdaCallback(on_epoch_end=predictAfterEpoch))
 
@@ -241,7 +239,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                 tvtWf.testDir.joinpath(PEW.imagesDir).glob("*.png")
             )
             self.savePredictions(model, testFiles)
-        self.export_training_data()
+        self.exportTrainingData()
         if overwriteFile is not None:
             # Make sure the updated model replaces the source file
             model.save(overwriteFile)
@@ -292,7 +290,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         if legendVisible is not None:
             pngWf.compositor.legend.setVisible(legendVisible)
 
-    def export_training_data(self):
+    def exportTrainingData(self):
         """
         Uses the tensorboard library to generate a CSV file of the training data for a specific model, with the data containing the specific Loss, Accuracy, Mean IoU, and Dice Coefficient values at each epoch the model is trained. Saves the csv files in the <BASE_PATH>/Graphs/<NETWORK_MODEL>/Training Values path with the training session name as the file name.
         :return values_df: The dataframe of the different metric values for each training epoch.
