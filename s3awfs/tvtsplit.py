@@ -116,7 +116,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
 
 
 class TrainValidateTestSplitWorkflow(WorkflowDir):
-    resolver: AliasedMaskResolver
+    resolver = AliasedMaskResolver()
     maxNumericLabel: int
 
     TRAIN_NAME = "train"
