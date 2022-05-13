@@ -149,6 +149,8 @@ class PngExportWorkflow(WorkflowDir):
     def overlayMaskOnImage(self, image, mask, outputFile=None):
         compositor = self.compositor
         compositor.setImage(image)
+        if compositor.image.dtype == np.uint8:
+            compositor.setLevels([0, 255])
         compositor.addLabelMask(mask, clearOverlays=True)
         if outputFile is not None:
             compositor.save(outputFile)
