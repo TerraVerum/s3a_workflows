@@ -120,6 +120,7 @@ class PngExportWorkflow(WorkflowDir):
         """
         if labels is None:
             labels = self.summaryFile
+        overlayOpts = overlayOpts or {}
         if isinstance(labels, FilePath.__args__):
             labels = pd.read_csv(
                 labels, dtype=str, na_filter=False, index_col=["numericLabel"]
@@ -131,7 +132,7 @@ class PngExportWorkflow(WorkflowDir):
         # Account for possible "default" colormap
         if overlayOpts.get("colormap", "default").lower() == "default":
             overlayOpts["colormap"] = constants.DEFAULT_RGB_CMAP
-        self.compositor.propertiesProc(**(overlayOpts or {}))
+        self.compositor.propertiesProc(**overlayOpts)
         existingIms = {im.stem for im in self.overlaysDir.glob("*.*")}
         imgList = fns.naturalSorted(
             [im for im in self.imagesDir.glob("*.png") if im.stem not in existingIms]
