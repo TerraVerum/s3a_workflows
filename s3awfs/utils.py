@@ -228,7 +228,9 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
 
     def _getFromRoot(self, root: Workflow_T, wfClassorName):
         # TODO: Prefer stages closer to requesting process
-        if isinstance(root, wfClassorName) or root.name == wfClassorName:
+        if (
+            not isinstance(wfClassorName, str) and isinstance(root, wfClassorName)
+        ) or root.name == wfClassorName:
             return root
         for stage in root:
             if ret := self._getFromRoot(stage, wfClassorName):
@@ -456,6 +458,7 @@ def columnsAsPrjParams(df, assignToDf=False):
         df.columns = cols
         return df
     return cols
+
 
 class DirCreator(WorkflowDir):
     """
