@@ -86,6 +86,13 @@ class ComponentImagesWorkflow(WorkflowDir):
         """
         Turns a csv annotation of a single image into a dataframe of cropped components from that image
         """
+        assert isinstance(
+            self.labelField, PrjParam
+        ), "Must assign a label field before creating component image exports"
+        # Ensure label field will be read into the imported data
+        # This is a no-op if the field already exists
+        self.io.tableData.addField(self.labelField)
+
         srcDir = Path(srcDir)
         csvDf = columnsAsPrjParams(
             self.io.importCsv(file, keepExtraFields=True, addMissingFields=True),
@@ -180,9 +187,6 @@ class ComponentImagesWorkflow(WorkflowDir):
         numUnderscoresNeeded = math.ceil(max(0, maxColLen - len(labelField.name)) / 2)
         underscorePreSuff = "".join("_" for _ in range(numUnderscoresNeeded))
         labelField.name = f"{underscorePreSuff}{labelField.name}{underscorePreSuff}"
-
-        # Force this field to exist when new data is read
-        tableData.addField(labelField)
         return labelField
 
     def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
@@ -283,8 +287,12 @@ class ComponentImagesWorkflow(WorkflowDir):
         self.hasDummyLabel = labelField is None
         if self.hasDummyLabel:
             self.labelField = self._generateUniqueDummyParam(self.io.tableData)
-        else:
+        elif labelField in self.io.tableData.allFields:
             self.labelField = self.io.tableData.fieldFromName(labelField)
+        elif not isinstance(labelField, PrjParam):
+            # Label field is string-like, not a field that the table knows to hanlde,
+            # and is assumed to exist in all imported files
+            self.labelField = PrjParam(str(labelField), type(labelField)())
 
         files = self.parent.get(FormattedInputWorkflow).formattedFiles
 
