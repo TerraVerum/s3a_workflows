@@ -205,8 +205,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
         outputName = (self.compImgsDir / name).with_suffix(".pkl")
-        compressionOptions = {"method": "zip", "archive_name": outputName.name}
-        exported.to_pickle(outputName, compression=compressionOptions)
+        exported.to_pickle(outputName, compression='zip')
         return exported
 
     def maybeReorientCompImgs(
