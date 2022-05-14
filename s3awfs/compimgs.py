@@ -107,7 +107,8 @@ class ComponentImagesWorkflow(WorkflowDir):
             raise ValueError(
                 "Must pass at least a dictionary with `shape` info when creating component image exports"
             )
-        imageFiles = list(srcDir.glob(file.stem + "*"))
+        # Special case: dvc files are not considered image data when using DVC-backed repo
+        imageFiles = [f for f in srcDir.glob(file.stem + "*") if f.suffix != ".dvc"]
         if not len(imageFiles):
             warnings.warn(
                 f"No image for {file.name}, no export will be formed",
