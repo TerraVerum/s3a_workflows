@@ -275,7 +275,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         # e.g. sampleSize is 1, which avoids MultiIndex results for some reason
         if groupCol in summaryDf.index.names:
             summaryDf = summaryDf.droplevel(groupCol)
-        return summaryDf
+        return summaryDf.copy()
 
     def _addTrainValTestInfo(self, summaryDf, fullSummaryDf):
         testOnUnused = self.input.get("testOnUnused")
