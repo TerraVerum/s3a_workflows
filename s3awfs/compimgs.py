@@ -103,9 +103,12 @@ class ComponentImagesWorkflow(WorkflowDir):
         labelCol = csvDf.columns[csvDf.columns.get_loc(self.labelField)]
         # Limits can always be set, since they will be ignored where not used
         labelCol.opts.setdefault("limits", mapping.to_list())
-        if resizeOpts is None or "shape" not in resizeOpts:
+        if resizeOpts is None or (
+            "shape" not in resizeOpts and "maxSideLength" not in resizeOpts
+        ):
             raise ValueError(
-                "Must pass at least a dictionary with `shape` info when creating component image exports"
+                "Must pass at least a dictionary with `shape` or `maxSideLength` info when"
+                " creating component image exports"
             )
         # Special case: dvc files are not considered image data when using DVC-backed repo
         imageFiles = [f for f in srcDir.glob(file.stem + "*") if f.suffix != ".dvc"]
@@ -191,7 +194,14 @@ class ComponentImagesWorkflow(WorkflowDir):
         return labelField
 
     def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
+        opts = kwargs.get("resizeOpts", {}).copy()
+        maxSideLength = opts.pop("maxSideLength", None)
+        if maxSideLength:
+            kwargs = kwargs.copy()
+            kwargs["resizeOpts"] = {**opts, "shape": None}
         exported = self.io.exportCompImgsDf(df, **kwargs, **extraKwargs)
+        if maxSideLength:
+            exported = self.maybeResizeCompImgs(exported, maxSideLength)
         idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported["label"]]
         exported["numericLabel"] = mapping.index[idxs]
         if self.input["forceVerticalOrientation"]:
@@ -210,8 +220,31 @@ class ComponentImagesWorkflow(WorkflowDir):
         assert all(c in exported for c in colOrder)
         exported = exported[colOrder]
         outputName = (self.compImgsDir / name).with_suffix(".pkl")
-        exported.to_pickle(outputName, compression='zip')
+        exported.to_pickle(outputName, compression="zip")
         return exported
+
+    def maybeResizeCompImgs(self, df: pd.DataFrame, maxSideLength: int):
+        """
+        Resizes component images to the maximum side length if the specified size
+        is exceeded
+        """
+        if maxSideLength is None:
+            return df
+        maxSideLength = int(maxSideLength)
+        for ii, row in df.iterrows():
+            img = row["image"]
+            imShape = np.array(img.shape[:2])
+            ratios = imShape / maxSideLength
+            if np.any(ratios > 1):
+                # Resize such that the largest side becomes maxSideLength and the
+                # other side is scaled while preserving the aspect ratio
+                newShape = [maxSideLength, maxSideLength]
+                useRatio = np.max(ratios)
+                replaceIdx = np.argmin(ratios)
+                newShape[replaceIdx] = int(imShape[replaceIdx] / useRatio)
+                img = cv.resize(img, tuple(newShape)[::-1])
+                df.at[ii, "image"] = img
+        return df
 
     def maybeReorientCompImgs(
         self,
