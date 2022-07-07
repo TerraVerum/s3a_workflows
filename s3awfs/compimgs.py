@@ -111,7 +111,7 @@ class ComponentImagesWorkflow(WorkflowDir):
                 " creating component image exports"
             )
         # Special case: dvc files are not considered image data when using DVC-backed repo
-        imageFiles = [f for f in srcDir.glob(file.stem + "*") if f.suffix != ".dvc"]
+        imageFiles = [f for f in srcDir.glob(file.stem + ".*") if f.suffix != ".dvc"]
         if not len(imageFiles):
             warnings.warn(
                 f"No image for {file.name}, no export will be formed",
