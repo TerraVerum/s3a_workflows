@@ -188,3 +188,9 @@ def dataGeneratorFromIter(**kwargs):
             output_shapes=(imageSig.shape, maskSig.shape),
         )
     return dataset
+
+
+def forceDataSharding(dataset):
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    return dataset.with_options(options)

@@ -30,6 +30,7 @@ from .datagen import (
     dataGeneratorFromIter,
     SequenceDataGenerator,
     SquareMaskSequenceDataGenerator,
+    forceDataSharding
 )
 
 
@@ -155,12 +156,12 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                 tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir]
             )
         ]
-        trainGenerator, valGenerator, testGenerator = generators
+        trainGenerator, valGenerator, testGenerator = map(forceDataSharding, generators)
 
         def calcNumBatches(fileList):
             return int(np.floor(len(fileList) / batchSize))
 
-        trainSteps, valSteps, testSteps = [calcNumBatches(lst) for lst in tvtFiles]
+        trainSteps, valSteps, testSteps = map(calcNumBatches, tvtFiles)
 
         overwriteFile = None
         if model is None:
