@@ -2,17 +2,19 @@ primitive:
   datagen:
   - s3awfs.fmtinput.FormattedInputWorkflow:
       annotationsPath #: csv annotation file or folder
-      augmentationOpts:
-        fraction: 0.0 # Will add "fraction*numrows" augmentations, may be >1
-        rotationPct: 0.4
+      augmentationOpts: null
+#        value:
+#          fraction: 0.0 # Will add "fraction*numrows" augmentations, may be >1
+#          rotationPct: 0.4
   - s3awfs.compimgs.ComponentImagesWorkflow:
       imagesPath #: Folder of full-size images
       labelField: null #: Field to use as a color for mask export. Null is a binary mask
-      s3aProj #: S3A project that knows how to deserialize component data
+      s3aProj: null # S3A project that knows how to deserialize component data
       resizeOpts:
-        shape: [512, 512]
+        value:
+          shape: [512, 512]
   - s3awfs.png.PngExportWorkflow:
-      overlayOpts: null # Set to dict with "opacity" (between 0->1) and "colormap" keys
+      overlayOpts: null # Set `value` to dict with "opacity" (between 0->1) and "colormap" keys
   - s3awfs.tvtsplit.TrainValidateTestSplitWorkflow:
       labelMap: null # optional label alias file, must contain numeric_label and label columns
       valPct: 0.15

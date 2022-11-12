@@ -16,14 +16,14 @@ from s3a import (
 )
 from s3a.compio import SerialExporter, SerialImporter
 from tqdm import tqdm
-from utilitys import fns
-from utilitys.typeoverloads import FilePath
+from qtextras import fns
+from qtextras.typeoverloads import FilePath
 
 from .constants import RNG
-from .utils import WorkflowDir, RegisteredPath
+from .utils import WorkflowDirectory, RegisteredPath
 
 
-class FormattedInputWorkflow(WorkflowDir):
+class FormattedInputWorkflow(WorkflowDirectory):
     formattedInputsDir = RegisteredPath()
     augmentedInputsDir = RegisteredPath()
 
@@ -41,27 +41,35 @@ class FormattedInputWorkflow(WorkflowDir):
         filterExpr: str = None,
     ):
         """
-        Generates cleansed csv files from the raw input dataframe. Afterwards, saves annotations in files separated
-        by image to allow multiprocessing on subsections of components
-        :param annotationsPath: Can either be a file or folder path. These are the annotations that will be processed
-          during the workflow.
-        :param augmentationOpts: Parameters for producing subimage augmentations. If *None*, no augmentations
-          will be produced
-        :param filterExpr: If speficied, this is passed to ``annotation dataframe.query`` to filter out unwanted samples
+        Generates cleansed csv files from the raw input dataframe. Afterwards,
+        saves annotations in files separated by image to allow multiprocessing on
+        subsections of components
+
+        Parameters
+        ----------
+        annotationsPath
+            Can either be a file or folder path. These are the annotations that will be
+            processed during the workflow.
+        augmentationOpts
+            Parameters for producing subimage augmentations. If *None*,
+            no augmentations will be produced
+        filterExpr
+            If speficied, this is passed to ``annotation dataframe.query`` to filter
+            out unwanted samples
         """
         if annotationsPath is None:
             return pd.DataFrame()
         annotationsPath = Path(annotationsPath)
         if annotationsPath.is_dir():
-            df = fns.readDataFrameFiles(annotationsPath, SerialImporter.readFile)
+            df = pd.concat(map(SerialImporter.readFile, annotationsPath.glob("*.csv")))
         else:
             df = SerialImporter.readFile(annotationsPath)
         if filterExpr is not None:
             df = df.query(filterExpr, engine="python")
         # Ensure old naming scheme is valid
-        df = df.rename(columns={"Source Image Filename": RTF.IMG_FILE.name})
+        df = df.rename(columns={"Source Image Filename": RTF.IMAGE_FILE.name})
         for imageName, subdf in tqdm(
-            df.groupby(RTF.IMG_FILE.name), "Formatting inputs"
+            df.groupby(RTF.IMAGE_FILE.name), "Formatting inputs"
         ):
             newName = Path(imageName).with_suffix(".csv").name
             dest = self.formattedInputsDir / newName
@@ -101,7 +109,7 @@ class FormattedInputWorkflow(WorkflowDir):
             centers=augCenters,
             clipToBbox=False,
         )
-        augmentedComps[RTF.IMG_FILE] = imageFile
+        augmentedComps[RTF.IMAGE_FILE] = imageFile
         defaultIo.exportCsv(
             augmentedComps,
             self.augmentedInputsDir / Path(imageFile).with_suffix(".csv"),

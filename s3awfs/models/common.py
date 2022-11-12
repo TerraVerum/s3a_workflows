@@ -5,7 +5,7 @@ import imageio
 import numpy as np
 import pyqtgraph as pg
 from s3a import generalutils as gutils
-from utilitys import widgets, RunOpts, fns
+from qtextras import widgets, RunOptions, fns, bindInteractorOptions as bind
 
 
 class EpochEvolutionViewer(widgets.ImageViewer):
@@ -14,29 +14,24 @@ class EpochEvolutionViewer(widgets.ImageViewer):
         self.predictionsDir = None
         self._epochDirs = []
 
-        self.toolsEditor.registerFunc(self.saveEvolutionGif)
-        self.changeDataProc = self.toolsEditor.registerFunc(
-            self.changeImage, runOpts=RunOpts.ON_CHANGED
+        self.toolsEditor.registerFunction(self.saveEvolutionGif)
+        self.changeDataProc = self.toolsEditor.registerFunction(
+            self.changeImage, runOpts=RunOptions.ON_CHANGED
         )
 
-        predProc = self.toolsEditor.registerFunc(
-            self.changePredictionsDir, runOpts=RunOpts.ON_CHANGED
+        predProc = self.toolsEditor.registerFunction(
+            self.changePredictionsDir, runOpts=RunOptions.ON_CHANGED
         )
         if predictionsDir is not None:
             predProc(predictionsDir=predictionsDir)
 
+    @bind(selectedImages=dict(type="list"), selectedEpoch=dict(type="list"))
     def changeImage(
         self,
         selectedImage="",
         selectedEpoch="",
         # groundTruthMasks: FilePath=None,
     ):
-        """
-        :param selectedImage:
-        type: list
-        :param selectedEpoch:
-        type: list
-        """
         selectedEpoch = Path(selectedEpoch)
         image = selectedEpoch / selectedImage
         if not image.is_file():
@@ -50,7 +45,7 @@ class EpochEvolutionViewer(widgets.ImageViewer):
         asFolder: True
         """
         self.predictionsDir = Path(predictionsDir)
-        p = self.changeDataProc.input.params
+        p = self.changeDataProc.parameters
         epochDirs = fns.naturalSorted(
             [d for d in self.predictionsDir.iterdir() if d.is_dir()]
         )
@@ -61,15 +56,16 @@ class EpochEvolutionViewer(widgets.ImageViewer):
         else:
             p["selectedImage"].setLimits([])
 
+    @bind(
+        filename=dict(
+            type="file",
+            fileMode="AnyFile",
+            value="predictions.gif",
+            filter="Gif Files (*.gif);;",
+        )
+    )
     def saveEvolutionGif(self, filename=None, fps=2, epochAsText=True):
-        """
-        :param filename:
-        type: filepicker
-        existing: False
-        value: 'predictions.gif'
-        fileFilter: Gif Files (*.gif);;
-        """
-        p = self.changeDataProc.input.params
+        p = self.changeDataProc.parameters
         ims = []
         selected = p["selectedImage"].value()
         drawitem = widgets.MaskCompositor()

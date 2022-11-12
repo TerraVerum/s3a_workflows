@@ -1,5 +1,5 @@
 s3a>=0.6.1
-utilitys>=0.5.1
+qtextras>=0.6.4
 scikit-learn
 imageio
 numpy

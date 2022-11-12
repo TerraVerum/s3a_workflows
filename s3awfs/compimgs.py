@@ -9,20 +9,24 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 from PIL import Image
-from s3a import ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, PRJ_ENUMS
-from utilitys import fns, PrjParam
-from utilitys.typeoverloads import FilePath
+from s3a import (
+    ComponentIO, REQD_TBL_FIELDS as RTF, ComplexXYVertices, PRJ_ENUMS,
+    TableData,
+)
+from qtextras import fns, OptionsDict
+from qtextras.typeoverloads import FilePath
 
 from . import constants
 from .fmtinput import FormattedInputWorkflow
-from .utils import WorkflowDir, RegisteredPath, columnsAsPrjParams
+from .utils import WorkflowDirectory, RegisteredPath, columnsAsOptions
 
 
-class ComponentImagesWorkflow(WorkflowDir):
+class ComponentImagesWorkflow(WorkflowDirectory):
     """
-    Prescribes a workflow for generating data sufficient for SMD label-based segmentation unit.
-    The final output is a pickled dataframe of component images as well as a populated directory with
-    most intermediate steps, and some fitted data transformers. See `run` for more information
+    Prescribes a workflow for generating data sufficient for SMD label-based
+    segmentation unit. The final output is a pickled dataframe of component images as
+    well as a populated directory with most intermediate steps, and some fitted data
+    transformers. See `run` for more information
     """
 
     compImgsDir = RegisteredPath()
@@ -31,7 +35,7 @@ class ComponentImagesWorkflow(WorkflowDir):
     allLabelsFile = RegisteredPath(".csv")
     compImgsFile = RegisteredPath(".pkl")
 
-    labelField: PrjParam | str | None = None
+    labelField: OptionsDict | str | None = None
     hasDummyLabel: bool
 
     def __init__(self, *args, **kwargs):
@@ -40,13 +44,14 @@ class ComponentImagesWorkflow(WorkflowDir):
         Initializes the workflow with a location and set of data parameters
         """
         super().__init__(*args, **kwargs)
-        self.io = ComponentIO()
+        self.io = ComponentIO(TableData())
 
     @classmethod
     def readDataframe(cls, file) -> pd.DataFrame:
         """
-        Since files don't have a zip extension, the default call to `read_pickle` will fail. This lets other
-        classes become agnostic about adding a "compression" parameter
+        Since files don't have a zip extension, the default call to `read_pickle` will
+        fail. This lets other classes become agnostic about adding a "compression"
+        parameter
         """
         return pd.read_pickle(file, compression="zip")
 
@@ -68,7 +73,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             labelsSer = pd.concat(
                 [
                     pd.read_csv(f, na_filter=False)[str(self.labelField)]
-                    for f in self.parent.get(FormattedInputWorkflow).formattedFiles
+                    for f in self.parent().get(FormattedInputWorkflow).formattedFiles
                     if len(list(imagesPath.glob(f.stem + "*")))
                 ]
             )
@@ -84,17 +89,18 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def createCompImgsDfSingle(self, file, srcDir, returnDf=False, resizeOpts=None):
         """
-        Turns a csv annotation of a single image into a dataframe of cropped components from that image
+        Turns a csv annotation of a single image into a dataframe of cropped components
+        from that image
         """
         assert isinstance(
-            self.labelField, PrjParam
+            self.labelField, OptionsDict
         ), "Must assign a label field before creating component image exports"
         # Ensure label field will be read into the imported data
         # This is a no-op if the field already exists
         self.io.tableData.addField(self.labelField)
 
         srcDir = Path(srcDir)
-        csvDf = columnsAsPrjParams(
+        csvDf = columnsAsOptions(
             self.io.importCsv(file, keepExtraFields=True, addMissingFields=True),
             assignToDf=True,
         )
@@ -107,8 +113,8 @@ class ComponentImagesWorkflow(WorkflowDir):
             "shape" not in resizeOpts and "maxSideLength" not in resizeOpts
         ):
             raise ValueError(
-                "Must pass at least a dictionary with `shape` or `maxSideLength` info when"
-                " creating component image exports"
+                "Must pass at least a dictionary with `shape` or `maxSideLength` info "
+                "when creating component image exports"
             )
         # Special case: dvc files are not considered image data when using DVC-backed repo
         imageFiles = [f for f in srcDir.glob(file.stem + ".*") if f.suffix != ".dvc"]
@@ -150,7 +156,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             csvDf, imageFile.stem, mapping, kwargs
         )
 
-        augmented = self.parent.get(FormattedInputWorkflow).augmentedInputsDir.joinpath(
+        augmented = self.parent().get(FormattedInputWorkflow).augmentedInputsDir.joinpath(
             imageFile.stem + ".csv"
         )
         if augmented.exists():
@@ -158,7 +164,7 @@ class ComponentImagesWorkflow(WorkflowDir):
             useKwargs = kwargs.copy()
             useKwargs["resizeOpts"] = {
                 **resizeOpts,
-                "rotationDeg": PRJ_ENUMS.ROT_OPTIMAL,
+                "rotationDeg": PRJ_ENUMS.ROTATION_OPTIMAL,
             }
             # Need to populate all fields in case label is an extra column
             augmentedDf = self.io.importCsv(augmented, keepExtraFields=True)
@@ -187,7 +193,7 @@ class ComponentImagesWorkflow(WorkflowDir):
         # column name for dummy data
         # Simply ensure there are enough underscores to be the longest new column name
         maxColLen = max(len(str(c)) for c in tableData.allFields) + 1
-        labelField = PrjParam("dummylabel", constants.DUMMY_FGND_VALUE)
+        labelField = OptionsDict("dummylabel", constants.DUMMY_FGND_VALUE)
         numUnderscoresNeeded = math.ceil(max(0, maxColLen - len(labelField.name)) / 2)
         underscorePreSuff = "".join("_" for _ in range(numUnderscoresNeeded))
         labelField.name = f"{underscorePreSuff}{labelField.name}{underscorePreSuff}"
@@ -252,8 +258,8 @@ class ComponentImagesWorkflow(WorkflowDir):
         vertices: t.Sequence[ComplexXYVertices],
     ):
         """
-        Ensures the width of all SMD components is less than the height (i.e. every component will have a "vertical"
-        alignment"
+        Ensures the width of all SMD components is less than the height (i.e. every
+        component will have a "vertical" alignment"
         """
         df["rotated"] = False
 
@@ -261,8 +267,8 @@ class ComponentImagesWorkflow(WorkflowDir):
             *rect, _orient = cv.minAreaRect(verts.stack())
             rotPoints = cv.boxPoints((*rect, _orient - row["rotation"]))
             xySpan = np.ptp(rotPoints, axis=0)
-            # If width has a larger span than height, rotate so all components have the same preferred component
-            # aspect
+            # If width has a larger span than height, rotate so all components have the
+            # same preferred component aspect
             if xySpan[0] > xySpan[1]:
                 for kk in "image", "labelMask":
                     df.at[idx, kk] = cv.rotate(row[kk], cv.ROTATE_90_CLOCKWISE)
@@ -270,8 +276,9 @@ class ComponentImagesWorkflow(WorkflowDir):
         return df
 
     def createMultipleCompImgs(self, fullImagesDir, inputFiles):
-        # Save to intermediate directory first to avoid multiprocess comms bandwidth issues
-        fns.mprocApply(
+        # Save to intermediate directory first to avoid multiprocess comms bandwidth
+        # issues
+        fns.multiprocessApply(
             self.createCompImgsDfSingle,
             inputFiles,
             srcDir=fullImagesDir,
@@ -282,8 +289,8 @@ class ComponentImagesWorkflow(WorkflowDir):
 
     def mergeCompImgs(self):
         """
-        After single image features are created, this merges the results into a single dataframe for easier reading
-        later
+        After single image features are created, this merges the results into a single
+        dataframe for easier reading later
         """
         allDfs = []
         for file in self.compImgsDir.glob("*.pkl"):
@@ -298,21 +305,30 @@ class ComponentImagesWorkflow(WorkflowDir):
         self,
         imagesPath=None,
         s3aProj: FilePath | dict = None,
-        labelField: PrjParam | str = None,
+        labelField: OptionsDict | str = None,
         tryMergingComps=False,
         resizeOpts: dict = None,
         forceVerticalOrientation=False,
     ):
         """
         Entry point for creating image features
-        :param imagesPath: Directory of full-sized PCB images
-        :param s3aProj: S3A project file or dict for interpreting csvs
-        :param labelField: Field to use as label moving forward
-        :param tryMergingComps: Whether to attempt creating a merged dataframe of all subimage samples. This
-          will likely fail if the shape is too large due to memory constraints
-        :param resizeOpts: Passed to exporting images
-        :param forceVerticalOrientation: Whether all exported images should be aligned such that their longest axis is
-          top-to-bottom of the image
+
+        Parameters
+        ----------
+        imagesPath
+            Directory of full-sized PCB images
+        s3aProj
+            S3A project file or dict for interpreting csvs
+        labelField
+            Field to use as label moving forward
+        tryMergingComps
+            Whether to attempt creating a merged dataframe of all subimage samples.
+            This will likely fail if the shape is too large due to memory constraints
+        resizeOpts
+            Passed to exporting images
+        forceVerticalOrientation
+            Whether all exported images should be aligned such that their longest axis is
+            top-to-bottom of the image
         """
         if s3aProj is not None:
             if isinstance(s3aProj, FilePath.__args__):
@@ -323,12 +339,12 @@ class ComponentImagesWorkflow(WorkflowDir):
             self.labelField = self._generateUniqueDummyParam(self.io.tableData)
         elif labelField in self.io.tableData.allFields:
             self.labelField = self.io.tableData.fieldFromName(labelField)
-        elif not isinstance(labelField, PrjParam):
+        elif not isinstance(labelField, OptionsDict):
             # Label field is string-like, not a field that the table knows to hanlde,
             # and is assumed to exist in all imported files
-            self.labelField = PrjParam(str(labelField), type(labelField)())
+            self.labelField = OptionsDict(str(labelField), type(labelField)())
 
-        files = self.parent.get(FormattedInputWorkflow).formattedFiles
+        files = self.parent().get(FormattedInputWorkflow).formattedFiles
 
         generated = {f.stem for f in self.compImgsDir.glob("*.*")}
         newFiles = fns.naturalSorted(f for f in files if f.stem not in generated)

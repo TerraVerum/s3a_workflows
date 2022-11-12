@@ -6,15 +6,15 @@ import numpy as np
 import pandas as pd
 from s3a import generalutils as gutils
 from tqdm import tqdm
-from utilitys import fns, widgets
-from utilitys.typeoverloads import FilePath
+from qtextras import fns, widgets
+from qtextras.typeoverloads import FilePath
 
 from . import constants
 from .compimgs import ComponentImagesWorkflow
-from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
+from .utils import WorkflowDirectory, RegisteredPath
 
 
-class PngExportWorkflow(WorkflowDir):
+class PngExportWorkflow(WorkflowDirectory):
 
     TRAIN_NAME = "train"
     VALIDATION_NAME = "validation"
@@ -39,12 +39,18 @@ class PngExportWorkflow(WorkflowDir):
         overlayOpts=None,
     ):
         """
-        Automatically generates the Neural Network data in an appropriate directory structure
-        and format in the base path with the resized and padded images and corresponding binary Masks.
-        :param overlayOpts: If *None*, no overlays are created. Otherwise, this is a dict of options for overlaying. Can
-          include ``opacity`` between 0->1 and ``colormap`` matching pyqtgraph or matplotlib colormap
+        Automatically generates the Neural Network data in an appropriate directory
+        structure and format in the base path with the resized and padded images and
+        corresponding binary Masks.
+
+        Parameters
+        ----------
+        overlayOpts
+            If *None*, no overlays are created. Otherwise, this is a dict of options
+            for overlaying. Can include ``opacity`` between 0->1 and ``colormap``
+            matching pyqtgraph or matplotlib colormap
         """
-        compImgsWf = self.parent.get(ComponentImagesWorkflow)
+        compImgsWf = self.parent().get(ComponentImagesWorkflow)
         files = np.array(list(compImgsWf.compImgsDir.glob("*.*")))
         stems = [f.stem for f in files]
         if self.summaryFile.exists():
@@ -59,7 +65,7 @@ class PngExportWorkflow(WorkflowDir):
         else:
             newFiles = fns.naturalSorted(files)
 
-        fns.mprocApply(
+        fns.multiprocessApply(
             self._exportSinglePcbImage,
             newFiles,
             descr="Exporting Png Files",
@@ -105,7 +111,7 @@ class PngExportWorkflow(WorkflowDir):
         if not list(self.summariesDir.iterdir()):
             # No summaries to concatenate
             return
-        concatDf = fns.readDataFrameFiles(self.summariesDir, pd.read_csv)
+        concatDf = pd.concat([pd.read_csv(f) for f in self.summariesDir.glob("*.csv")])
         concatDf.to_csv(self.summaryFile, index=False)
         return concatDf
 

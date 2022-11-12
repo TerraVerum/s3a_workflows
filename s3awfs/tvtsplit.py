@@ -8,20 +8,21 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from utilitys import fns
-from utilitys.typeoverloads import FilePath
+from qtextras import fns
+from qtextras.typeoverloads import FilePath
 
 from . import constants
 from .png import PngExportWorkflow
 from .compimgs import ComponentImagesWorkflow
-from .utils import WorkflowDir, RegisteredPath, AliasedMaskResolver, getLinkFunc
+from .utils import WorkflowDirectory, RegisteredPath, AliasedMaskResolver, getLinkFunc
 
 _defaultMaskColors = (None, "binary", constants.DEFAULT_RGB_CMAP)
 
 
-class LabelMaskResolverWorkflow(WorkflowDir):
+class LabelMaskResolverWorkflow(WorkflowDirectory):
     """
-    Turns masks with potentially many-to-one label mappings to sequentially numbered output values
+    Turns masks with potentially many-to-one label mappings to sequentially numbered
+    output values
     """
 
     rgbMasksDir = RegisteredPath()
@@ -115,7 +116,7 @@ class LabelMaskResolverWorkflow(WorkflowDir):
         return shouldExist.difference(existing)
 
 
-class TrainValidateTestSplitWorkflow(WorkflowDir):
+class TrainValidateTestSplitWorkflow(WorkflowDirectory):
     resolver = AliasedMaskResolver()
     maxNumericLabel: int
 
@@ -145,24 +146,36 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         """
         From a set of label and image files, forms train, validate, and test subsets.
 
-        :param labelMap: Dataframe with numeric_label and label columns. Matches a class label against its numeric
-          mask value. One class is allowed to have multiple numeric labels. If not provided, it will default to
-          ``ComponentImagesWorkflow.allLabelsFile``.
-        :param balanceClasses: If *True*, ``balanceFunc`` is called on the number of items in each class to subsample
-          overrepresented data.
-        :param balanceFunc: See ``balanceClasses`` description. Disabled if that is *False*.
-        :param valPct: Fraction (between 0 and 1) of validation data
-        :param testPct: Fraction (between 0 and 1) of test/holdout data
-        :param replace: If *True*, sampling of validation and test data occurs with replacement
-        :param testOnUnused: If *True*, holdout data can originate from data that was discarded either through class
-          exclusion or class balancing.
-        :param maxTestSamps: Max number of holdout samples. If *None*, no limit is enforced.
-        :param maskColors: Mask types to generate. *None* is the default label mask (strongly recommended),
-          "binary" is for a black-white human-visible export, and any recognizable color ("viridis", "magma",
-          etc.) will make an rgb-colored mask.
+        Parameters
+        ----------
+        labelMap
+            Dataframe with numeric_label and label columns. Matches a class label
+            against its numeric mask value. One class is allowed to have multiple
+            numeric labels. If not provided, it will default to
+            ``ComponentImagesWorkflow.allLabelsFile``.
+        balanceClasses
+            If *True*, ``balanceFunc`` is called on the number of items in each class
+            to subsample overrepresented data.
+        balanceFunc
+            See ``balanceClasses`` description. Disabled if that is *False*.
+        valPct
+            Fraction (between 0 and 1) of validation data
+        testPct
+            Fraction (between 0 and 1) of test/holdout data
+        replace
+            If *True*, sampling of validation and test data occurs with replacement
+        testOnUnused
+            If *True*, holdout data can originate from data that was discarded either
+            through class exclusion or class balancing.
+        maxTestSamps
+            Max number of holdout samples. If *None*, no limit is enforced.
+        maskColors
+            Mask types to generate. *None* is the default label mask (strongly
+            recommended), "binary" is for a black-white human-visible export, and any
+            recognizable color ("viridis", "magma", etc.) will make an rgb-colored mask.
         """
         labelMap = self._resolveLabelMap(labelMap)
-        exportWf = self.parent.get(PngExportWorkflow)
+        exportWf = self.parent().get(PngExportWorkflow)
         if self.filteredSummaryFile.exists():
             summary = pd.read_csv(self.filteredSummaryFile, na_filter=False)
         else:
@@ -175,7 +188,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             self.resolver.classInfo.to_csv(self.classInfoFile)
         else:
             # No class info provided, so just use all labels as classes
-            allLabelsFile = self.parent.get(ComponentImagesWorkflow).allLabelsFile
+            allLabelsFile = self.parent().get(ComponentImagesWorkflow).allLabelsFile
             labelsSer = pd.read_csv(allLabelsFile, index_col="numeric_label")["label"]
             classInfo = self.resolver.createOutputClassMapping(labelsSer)
             classInfo.to_csv(self.classInfoFile)
@@ -188,7 +201,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
             data = summary[summary["dataType"] == typ]
             datasets.append({"dir": dir_, "data": data})
 
-        fns.mprocApply(
+        fns.multiprocessApply(
             self._exportDatatypePortion,
             datasets,
             extraArgs=(exportWf,),
@@ -201,7 +214,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         linkFunc = getLinkFunc()
         destDir = dirAndData["dir"]
         df = dirAndData["data"]
-        maskWf = LabelMaskResolverWorkflow(destDir, createDirs=True)
+        maskWf = LabelMaskResolverWorkflow(destDir, createDirectories=True)
         # MaskWf generates colored, normal, and binary scaled masks
         maskWf.runWorkflow(
             df["compImageFile"].apply(lambda el: exportWf.labelMasksDir / el),
@@ -283,7 +296,8 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         # Just to silence intellisense; unused will be set below
         unused = None
         if testOnUnused:
-            # Don't dip into training data, instead use unclassified data from the full summary
+            # Don't dip into training data, instead use unclassified data from the full
+            # summary
             unused = unaugmented(
                 fullSummaryDf.loc[fullSummaryDf.index.difference(summaryDf.index)]
             )
@@ -313,8 +327,8 @@ class TrainValidateTestSplitWorkflow(WorkflowDir):
         summaryDf.loc[valIds, "dataType"] = self.VALIDATION_NAME
         return summaryDf
 
-    def createDirs(self, excludeExprs=(".",)):
-        super().createDirs(excludeExprs)
+    def createDirectories(self, excludeExprs=(".",)):
+        super().createDirectories(excludeExprs)
         for sub in PngExportWorkflow.imagesDir, PngExportWorkflow.labelMasksDir:
             for parent in self.trainDir, self.validateDir, self.testDir:
                 toCreate = parent / sub
