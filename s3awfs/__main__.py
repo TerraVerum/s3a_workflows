@@ -1,7 +1,7 @@
 import sys
 
-from s3a import mkQApp
 from qtextras import fns
+from s3a import mkQApp
 
 from s3awfs import allWorkflows
 from s3awfs.main import MainWorkflow

@@ -4,14 +4,15 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from skimage.measure import regionprops_table, regionprops
-
-from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
-from s3a.compio.helpers import deserialize
 from qtextras import fns
+from s3a import REQD_TBL_FIELDS as RTF, ComponentIO
+from s3a.compio.helpers import deserialize
+from skimage.measure import regionprops, regionprops_table
+
 from . import constants
 from .fmtinput import FormattedInputWorkflow
 from .utils import RegisteredPath, WorkflowDirectory
+
 
 # -----
 # Various image features

@@ -4,23 +4,21 @@ from functools import lru_cache
 
 import pandas as pd
 import tensorflow as tf
-import tensorflow.keras.backend as K
-from tensorflow.keras import Input
+from qtextras.typeoverloads import FilePath
+from s3a import cv2 as cv
+from s3a.generalutils import cvImreadRgb
+from tensorflow.keras import Input, backend as K
 from tensorflow.keras.layers import (
-    Conv2D,
-    BatchNormalization,
     Activation,
-    MaxPooling2D,
     Add,
+    BatchNormalization,
+    Conv2D,
     Conv2DTranspose,
     Dropout,
+    MaxPooling2D,
 )
 from tensorflow.keras.metrics import MeanIoU
-from tensorflow.keras.models import Model
-from tensorflow.keras.models import load_model
-from qtextras.typeoverloads import FilePath
-from s3a.generalutils import cvImreadRgb
-from s3a import cv2 as cv
+from tensorflow.keras.models import Model, load_model
 
 from .tensorflow import TensorflowTrainingWorkflow, makeTensorflowStrategy
 from ..png import PngExportWorkflow as PEW

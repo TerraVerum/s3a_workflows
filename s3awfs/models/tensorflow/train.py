@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os.path
 import shutil
-import typing as t
 from pathlib import Path
 
 import cv2 as cv
@@ -12,24 +11,25 @@ import tensorflow as tf
 from s3a import generalutils as gutils
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.callbacks import (
-    LambdaCallback,
     EarlyStopping,
-    TensorBoard,
+    LambdaCallback,
     ModelCheckpoint,
+    TensorBoard,
 )
-from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
-from utilitys import fns, ProcessIO
+from utilitys import ProcessIO, fns
 from utilitys.typeoverloads import FilePath
 
 from s3awfs.png import PngExportWorkflow
 from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
-from s3awfs.utils import WorkflowDirectory, RegisteredPath
+from s3awfs.utils import RegisteredPath, WorkflowDirectory
+
 from .datagen import (
-    dataGeneratorFromIter,
     SequenceDataGenerator,
     SquareMaskSequenceDataGenerator,
+    dataGeneratorFromIter,
 )
 
 

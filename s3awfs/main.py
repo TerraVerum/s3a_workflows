@@ -1,14 +1,15 @@
 from __future__ import annotations
+
 import typing as t
 from functools import wraps
-
 from pathlib import Path
 
-from s3a.parameditors.algcollection import AlgorithmCollection, AlgorithmEditor
-from . import getWorkflow, wfModules, constants
-from .utils import WorkflowEditor, NestedWorkflow, Workflow_T
 from qtextras import fns
 from qtextras.typeoverloads import FilePath
+from s3a.parameditors.algcollection import AlgorithmCollection
+
+from . import constants, getWorkflow, wfModules
+from .utils import NestedWorkflow, Workflow_T, WorkflowEditor
 
 
 class MainWorkflow(NestedWorkflow):

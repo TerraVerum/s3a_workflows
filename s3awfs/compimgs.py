@@ -9,19 +9,19 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 from PIL import Image
+from qtextras import OptionsDict, fns
+from qtextras.typeoverloads import FilePath
 from s3a import (
-    ComponentIO,
+    PRJ_ENUMS,
     REQD_TBL_FIELDS as RTF,
     ComplexXYVertices,
-    PRJ_ENUMS,
+    ComponentIO,
     TableData,
 )
-from qtextras import fns, OptionsDict
-from qtextras.typeoverloads import FilePath
 
 from . import constants
 from .fmtinput import FormattedInputWorkflow
-from .utils import WorkflowDirectory, RegisteredPath, columnsAsOptions
+from .utils import RegisteredPath, WorkflowDirectory, columnsAsOptions
 
 
 class ComponentImagesWorkflow(WorkflowDirectory):

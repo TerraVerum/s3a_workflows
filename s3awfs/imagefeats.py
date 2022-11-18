@@ -11,8 +11,8 @@ from sklearn.decomposition import IncrementalPCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from tqdm import tqdm
 
-from .utils import WorkflowDirectory, RegisteredPath, NestedWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
+from .utils import RegisteredPath, WorkflowDirectory
 
 
 class FeatureTransformerWorkflow(WorkflowDirectory):

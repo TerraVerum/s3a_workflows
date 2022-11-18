@@ -6,7 +6,7 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from s3a import generalutils as gutils
-from skimage.measure import regionprops, label
+from skimage.measure import label, regionprops
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
 

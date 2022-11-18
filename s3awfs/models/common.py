@@ -4,8 +4,8 @@ import cv2 as cv
 import imageio
 import numpy as np
 import pyqtgraph as pg
+from qtextras import RunOptions, bindInteractorOptions as bind, fns, widgets
 from s3a import generalutils as gutils
-from qtextras import widgets, RunOptions, fns, bindInteractorOptions as bind
 
 
 class EpochEvolutionViewer(widgets.ImageViewer):

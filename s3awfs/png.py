@@ -4,14 +4,14 @@ from pathlib import Path
 import cv2 as cv
 import numpy as np
 import pandas as pd
-from s3a import generalutils as gutils
-from tqdm import tqdm
 from qtextras import fns, widgets
 from qtextras.typeoverloads import FilePath
+from s3a import generalutils as gutils
+from tqdm import tqdm
 
 from . import constants
 from .compimgs import ComponentImagesWorkflow
-from .utils import WorkflowDirectory, RegisteredPath
+from .utils import RegisteredPath, WorkflowDirectory
 
 
 class PngExportWorkflow(WorkflowDirectory):

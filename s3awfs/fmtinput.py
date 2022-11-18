@@ -4,23 +4,22 @@ from pathlib import Path
 
 import cv2 as cv
 import numpy as np
-
 import pandas as pd
+from qtextras import fns
+from qtextras.typeoverloads import FilePath
 from s3a import (
     REQD_TBL_FIELDS as RTF,
-    TableData,
     ComplexXYVertices,
+    TableData,
     XYVertices,
     compio,
     defaultIo,
 )
 from s3a.compio import SerialExporter, SerialImporter
 from tqdm import tqdm
-from qtextras import fns
-from qtextras.typeoverloads import FilePath
 
 from .constants import RNG
-from .utils import WorkflowDirectory, RegisteredPath
+from .utils import RegisteredPath, WorkflowDirectory
 
 
 class FormattedInputWorkflow(WorkflowDirectory):

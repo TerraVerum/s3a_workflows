@@ -7,14 +7,14 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from qtextras import fns
 from qtextras.typeoverloads import FilePath
+from sklearn.model_selection import train_test_split
 
 from . import constants
-from .png import PngExportWorkflow
 from .compimgs import ComponentImagesWorkflow
-from .utils import WorkflowDirectory, RegisteredPath, AliasedMaskResolver, getLinkFunc
+from .png import PngExportWorkflow
+from .utils import AliasedMaskResolver, RegisteredPath, WorkflowDirectory, getLinkFunc
 
 _defaultMaskColors = (None, "binary", constants.DEFAULT_RGB_CMAP)
 
