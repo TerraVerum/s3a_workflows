@@ -1,3 +1,19 @@
 __pycache__
+build
+*egg-info*
+dist
+
+*.wpu
+
+*.xml
 
 .idea
+
+.vscode
+
+# Scheme folders
+menuopts
+
+# Auto-generated test files
+/apptests/files/*.png
+.coverage

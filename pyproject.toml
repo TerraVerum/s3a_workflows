@@ -37,7 +37,7 @@ classifiers = [
 
 [project.optional-dependencies]
 full = [
-    "PySide6 >= 6.2.0",
+    "s3a[full]"
 ]
 
 [tool.setuptools.dynamic]
@@ -47,3 +47,14 @@ version = { attr = "s3awfs.__version__" }
 profile = "black"
 reverse_relative = true
 combine_as_imports = true
+
+[tool.black]
+# Use all defaults for now, but keep the header to indicate usage of black
+
+[tool.unimport]
+ignore_init=true
+
+[tool.piptools.compile]
+input_files = ["./pyproject.toml", "requirements-unreleased.txt"]
+output_file = "requirements-pinned.txt"
+verbose = true
