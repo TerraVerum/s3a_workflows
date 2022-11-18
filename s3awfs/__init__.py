@@ -1,7 +1,7 @@
 import pydoc
 
 from .utils import WorkflowDirectory, NestedWorkflow, Workflow_T
-from .__version__ import __version__
+__version__ = "0.1.0"
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
 
