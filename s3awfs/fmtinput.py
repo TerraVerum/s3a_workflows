@@ -37,7 +37,7 @@ class FormattedInputWorkflow(WorkflowDirectory):
     def runWorkflow(
         self,
         annotationsPath: FilePath = None,
-        augmentationOpts: dict = None,
+        augmentationOptions: dict = None,
         filterExpr: str = None,
     ):
         """
@@ -50,7 +50,7 @@ class FormattedInputWorkflow(WorkflowDirectory):
         annotationsPath
             Can either be a file or folder path. These are the annotations that will be
             processed during the workflow.
-        augmentationOpts
+        augmentationOptions
             Parameters for producing subimage augmentations. If *None*,
             no augmentations will be produced
         filterExpr
@@ -83,7 +83,7 @@ class FormattedInputWorkflow(WorkflowDirectory):
         return df
 
     def _maybeCreateAugmentations(self, originalVerts, imageFile):
-        augmentOpts = (self.input.get("augmentationOpts") or {}).copy()
+        augmentOpts = (self.input.get("augmentationOptions") or {}).copy()
         if not augmentOpts or np.isclose(augmentOpts.get("fraction", 0.0), 0):
             return None
         originalVerts = compio.helpers.deserialize(

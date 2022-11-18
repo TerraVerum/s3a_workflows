@@ -306,7 +306,7 @@ class AliasedMaskResolver:
     def __init__(
         self,
         numberLabelMap: pd.Series = None,
-        labelMasksDir=None,
+        labelMaskSource=None,
     ):
         """
         Parameters
@@ -316,7 +316,7 @@ class AliasedMaskResolver:
             index is the numeric mask value and the value is the class label (can also
             be numeric)
         """
-        self.masksDir = labelMasksDir or Path()
+        self.masksDir = labelMaskSource or Path()
         self.hasClassInfo = numberLabelMap is not None
         self.classInfo = None
         if self.hasClassInfo:

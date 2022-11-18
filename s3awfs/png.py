@@ -36,7 +36,7 @@ class PngExportWorkflow(WorkflowDirectory):
 
     def runWorkflow(
         self,
-        overlayOpts=None,
+        overlayOptions=None,
     ):
         """
         Automatically generates the Neural Network data in an appropriate directory
@@ -45,7 +45,7 @@ class PngExportWorkflow(WorkflowDirectory):
 
         Parameters
         ----------
-        overlayOpts
+        overlayOptions
             If *None*, no overlays are created. Otherwise, this is a dict of options
             for overlaying. Can include ``opacity`` between 0->1 and ``colormap``
             matching pyqtgraph or matplotlib colormap
@@ -75,8 +75,8 @@ class PngExportWorkflow(WorkflowDirectory):
         )
 
         self.createMergedSummaries()
-        if overlayOpts is not None:
-            self.createOverlays(overlayOpts=overlayOpts, showProgress=True)
+        if overlayOptions is not None:
+            self.createOverlays(overlayOptions=overlayOptions, showProgress=True)
 
     def _exportSinglePcbImage(self, compImgsFile):
         outputSummaryName = self.summariesDir / compImgsFile.with_suffix(".csv").name
@@ -116,17 +116,17 @@ class PngExportWorkflow(WorkflowDirectory):
         return concatDf
 
     def createOverlays(
-        self, labels: pd.Series = None, overlayOpts=None, showProgress=False
+        self, labels: pd.Series = None, overlayOptions=None, showProgress=False
     ):
         """
         Overlays masks on top of images and saves to a new directory
         :param labels: Mapping of numeric mask value to its string label
-        :param overlayOpts: Properties used for mask overlays
+        :param overlayOptions: Properties used for mask overlays
         :param showProgress: Whether to display a progress bar during overlay creation
         """
         if labels is None:
             labels = self.summaryFile
-        overlayOpts = overlayOpts or {}
+        overlayOptions = overlayOptions or {}
         if isinstance(labels, FilePath.__args__):
             labels = pd.read_csv(
                 labels, dtype=str, na_filter=False, index_col=["numericLabel"]
@@ -136,9 +136,9 @@ class PngExportWorkflow(WorkflowDirectory):
         oldProps = dict(self.compositor.propertiesProc.input)
         self.compositor.updateLabelMap(labels)
         # Account for possible "default" colormap
-        if overlayOpts.get("colormap", "default").lower() == "default":
-            overlayOpts["colormap"] = constants.DEFAULT_RGB_CMAP
-        self.compositor.propertiesProc(**overlayOpts)
+        if overlayOptions.get("colormap", "default").lower() == "default":
+            overlayOptions["colormap"] = constants.DEFAULT_RGB_CMAP
+        self.compositor.propertiesProc(**overlayOptions)
         existingIms = {im.stem for im in self.overlaysDir.glob("*.*")}
         imgList = fns.naturalSorted(
             [im for im in self.imagesDir.glob("*.png") if im.stem not in existingIms]

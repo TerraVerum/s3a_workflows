@@ -25,7 +25,7 @@ class SequenceDataGenerator(Sequence):
         self,
         ownedImageNames: list[Path | str],
         imagesDir: Path,
-        labelMasksDir: Path,
+        labelMaskSource: Path,
         imageShape: int | tuple[int, int],
         numOutputClasses: int,
         batchSize: int,
@@ -38,7 +38,7 @@ class SequenceDataGenerator(Sequence):
             A list of Path object file directories for the specific data type.
         imagesDir
             Images to use as inputs data
-        labelMasksDir
+        labelMaskSource
             Masks to use as ground truth outputs
         batchSize
             A int of the batch size of the training of the Neural Network.
@@ -63,7 +63,7 @@ class SequenceDataGenerator(Sequence):
         self.shuffle = shuffle
         self.indexes = np.arange(len(self.ownedImageNames))
         self.numOutputClasses = numOutputClasses
-        self.labelMasksDir = labelMasksDir
+        self.labelMasksDir = labelMaskSource
         self.on_epoch_end()
 
     def __len__(self):
@@ -136,7 +136,7 @@ class DataGenIterator:
         self,
         ownedImageNames,
         imagesDir: Path,
-        labelMasksDir,
+        labelMaskSource,
         imageShape,
         numOutputClasses,
         shuffle=True,
@@ -154,7 +154,7 @@ class DataGenIterator:
         self.numOutputClasses = numOutputClasses
         self.imageShape = imageShape
         self.maskShape = (*imageShape[:2], numOutputClasses)
-        self.labelMasksDir = labelMasksDir
+        self.labelMasksDir = labelMaskSource
         if shuffle:
             RNG.shuffle(self.ownedImageNames)
 

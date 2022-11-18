@@ -48,7 +48,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
     def runWorkflow(
         self,
         model: Model | FilePath = None,
-        resizeOpts=None,
+        resizeOptions=None,
         customObjects: dict = None,
         compileOpts: dict = None,
         learningRate=0.001,
@@ -70,7 +70,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
         model
             Keras model to be trained. Can either be a h5 model file or the Model
             object itself. defaults to ``self.savedModelFile` if unspecified
-        resizeOpts
+        resizeOptions
             Options for how images are resized, must contain a 'shape' key
             with the shape of the model input
         customObjects
@@ -160,13 +160,13 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
                     .prefetch(max(1, bufferSize // 10))
                 )
 
-        resizeOpts = resizeOpts or dict(shape=(512, 512))
+        resizeOptions = resizeOptions or dict(shape=(512, 512))
         generators = [
             constructor(
                 ownedImageNames=nameList,
                 imagesDir=dir_ / PEW.imagesDir,
-                labelMasksDir=dir_ / PEW.labelMasksDir,
-                imageShape=(*resizeOpts["shape"], 3),
+                labelMaskSource=dir_ / PEW.labelMasksDir,
+                imageShape=(*resizeOptions["shape"], 3),
                 numOutputClasses=tvtWf.resolver.numClasses,
                 batchSize=batchSize,
                 shuffle=True,
