@@ -90,7 +90,9 @@ class ComponentImagesWorkflow(WorkflowDirectory):
         infoDf.to_csv(self.allLabelsFile)
         return infoDf["label"]
 
-    def createCompImgsDfSingle(self, file, source, returnDf=False, resizeOptions=None):
+    def createComponentImagesDfSingle(
+        self, file, source, returnDf=False, resizeOptions=None
+    ):
         """
         Turns a csv annotation of a single image into a dataframe of cropped components
         from that image
@@ -155,7 +157,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
             returnStats=True,
         )
 
-        originalExport = self._finalizeSingleExport(
+        originalExport = self.annotationsToComponentImagesDf(
             csvDf, imageFile.stem, mapping, kwargs
         )
 
@@ -181,7 +183,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
                 len(augmentedDf)
             ).set_index(augmentedDf.index, drop=True)
             augmentedDfWithAllFields.update(augmentedDf)
-            self._finalizeSingleExport(
+            self.annotationsToComponentImagesDf(
                 augmentedDfWithAllFields,
                 imageFile.stem + "_augmented",
                 mapping,
@@ -204,7 +206,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
         labelField.name = f"{underscorePreSuff}{labelField.name}{underscorePreSuff}"
         return labelField
 
-    def _finalizeSingleExport(self, df, name, mapping, kwargs, **extraKwargs):
+    def annotationsToComponentImagesDf(self, df, name, mapping, kwargs, **extraKwargs):
         opts = kwargs.get("resizeOptions", {}).copy()
         maxSideLength = opts.pop("maxSideLength", None)
         if maxSideLength:
@@ -212,11 +214,11 @@ class ComponentImagesWorkflow(WorkflowDirectory):
             kwargs["resizeOptions"] = {**opts, "shape": None}
         exported = self.io.exportCompImgsDf(df, **kwargs, **extraKwargs)
         if maxSideLength:
-            exported = self.maybeResizeCompImgs(exported, maxSideLength)
+            exported = self.maybeResizeComponentImages(exported, maxSideLength)
         idxs = [np.flatnonzero(mapping == lbl)[0] for lbl in exported["label"]]
         exported["numericLabel"] = mapping.index[idxs]
         if self.input["forceVerticalOrientation"]:
-            exported = self.maybeReorientCompImgs(exported, df[RTF.VERTICES])
+            exported = self.maybeReorientComponentImages(exported, df[RTF.VERTICES])
         # Unjumble row ordering
         colOrder = [
             "instanceId",
@@ -234,7 +236,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
         exported.to_pickle(outputName, compression="zip")
         return exported
 
-    def maybeResizeCompImgs(self, df: pd.DataFrame, maxSideLength: int):
+    def maybeResizeComponentImages(self, df: pd.DataFrame, maxSideLength: int):
         """
         Resizes component images to the maximum side length if the specified size
         is exceeded
@@ -257,7 +259,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
                 df.at[ii, "image"] = img
         return df
 
-    def maybeReorientCompImgs(
+    def maybeReorientComponentImages(
         self,
         df: pd.DataFrame,
         vertices: t.Sequence[ComplexXYVertices],
@@ -284,7 +286,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
         # Save to intermediate directory first to avoid multiprocess comms bandwidth
         # issues
         fns.multiprocessApply(
-            self.createCompImgsDfSingle,
+            self.createComponentImagesDfSingle,
             inputFiles,
             source=fullImagesDir,
             resizeOptions=self.input["resizeOptions"],
