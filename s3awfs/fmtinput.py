@@ -101,7 +101,7 @@ class FormattedInputWorkflow(WorkflowDirectory):
         augCenters += RNG.normal(0, augCenters.std(0) / 4, augCenters.shape)
         # Accomodate case where more rows are requested than exist in the dataframe
         augCenters = RNG.choice(augCenters, numComps)
-        augmentedComps = self.augmentor.makeCompDf(
+        augmentedComps = self.augmentor.makeComponentDf(
             numComps,
             **augmentOpts,
             sizes=augSizes,
@@ -128,7 +128,7 @@ class ComponentGenerator:
     ):
         self.tableData = tableData or TableData()
 
-    def makeCompDf(
+    def makeComponentDf(
         self,
         numRows: int,
         bbox=None,
@@ -156,6 +156,6 @@ class ComponentGenerator:
                 points = np.clip(points, bbox[0], bbox[1])
             verts = ComplexXYVertices([points.astype(int).view(XYVertices)])
             outBoxes.append(verts)
-        out = self.tableData.makeCompDf(numRows, sequentialIds=True)
+        out = self.tableData.makeComponentDf(numRows, sequentialIds=True)
         out[RTF.VERTICES] = outBoxes
         return out

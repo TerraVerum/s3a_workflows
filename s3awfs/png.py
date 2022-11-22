@@ -133,7 +133,8 @@ class PngExportWorkflow(WorkflowDirectory):
             )
             labels = labels["label"].drop_duplicates()
             labels[labels.str.len() == 0] = "<blank>"
-        oldProps = dict(self.compositor.propertiesProc.input)
+        proc = self.compositor.propertiesProc
+        oldProps = {**proc.extra, **proc.parameterCache}
         self.compositor.updateLabelMap(labels)
         # Account for possible "default" colormap
         if overlayOptions.get("colormap", "default").lower() == "default":
@@ -151,7 +152,7 @@ class PngExportWorkflow(WorkflowDirectory):
             )
             outputFile = self.overlaysDir / img.with_suffix(".jpg").name
             self.overlayMaskOnImage(img, mask, outputFile)
-        self.compositor.propertiesProc(**oldProps)
+        proc(**oldProps)
 
     def overlayMaskOnImage(self, image, mask, outputFile=None):
         compositor = self.compositor
