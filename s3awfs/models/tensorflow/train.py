@@ -19,8 +19,8 @@ from tensorflow.keras.callbacks import (
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
-from utilitys import ProcessIO, fns
-from utilitys.typeoverloads import FilePath
+from qtextras import fns
+from qtextras.typeoverloads import FilePath
 
 from s3awfs.png import PngExportWorkflow
 from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
@@ -35,7 +35,7 @@ from .datagen import (
 
 def makeTensorflowStrategy(strategyClass="OneDeviceStrategy", devices="/cpu:0"):
     strat = getattr(tf.distribute, strategyClass)
-    return ProcessIO(strategy=strat(devices))
+    return dict(strategy=strat(devices))
 
 
 class TensorflowTrainingWorkflow(WorkflowDirectory):
@@ -263,7 +263,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
         if overwriteFile is not None:
             # Make sure the updated model replaces the source file
             model.save(overwriteFile)
-        return ProcessIO(model=model)
+        return dict(model=model)
 
     def savePredictions(self, model, testImagePaths, outputDir=None):
         """
