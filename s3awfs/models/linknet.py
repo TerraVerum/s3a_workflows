@@ -5,6 +5,7 @@ from functools import lru_cache
 import pandas as pd
 import tensorflow as tf
 from qtextras.typeoverloads import FilePath
+from qtextras import bindInteractorOptions as bind
 from s3a import cv2 as cv
 from s3a.generalutils import cvImreadRgb
 from tensorflow.keras import Input, backend as K
@@ -70,8 +71,12 @@ class LinkNet:
 
     def __init__(self, inputShape: tuple, numClasses=2, dropout=0.5):
         """
-        :param inputShape: Shape of the images processed by the network (w, h, nchans)
-        :param numClasses: The number of output classes for the Neural Network data.
+        Parameters
+        ----------
+        inputShape
+            Shape of the images processed by the network (w, h, nchans)
+        numClasses
+            The number of output classes for the Neural Network data.
         """
         self.input_tuple = inputShape
         self.input_layer = Input(self.input_tuple)
@@ -255,8 +260,8 @@ def makeLinknetModel(
     strategy=None,
 ):
     """
-    Creates a h5 model file for the specified input layer topology. Optionally, a weights file can be specified
-    to preset layer weights
+    Creates a h5 model file for the specified input layer topology. Optionally,
+    a weights file can be specified to preset layer weights
     """
     strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
@@ -278,15 +283,19 @@ def makeLinknetModel(
     )
 
 
+@bind(
+    file=dict(type="file", value="", nameFilter="Tensorflow Model (*.h5);;"),
+    strategy=dict(ignore=True),
+)
 @lru_cache()
 def loadLinknetModel(file, strategy=None):
     """
-    :param file: h5 model file to load
-    type: filepicker
-    value: ''
-    fileFilter: Tensorflow Model Files (*.h5);;
-    :param strategy: Tensorflow strategy, can be set with ``makeTensorflowStrategy``
-    ignore: True
+    Parameters
+    ----------
+    file
+        Model file to load
+    strategy
+        Disstributed training strategy, can be set with ``makeTensorflowStrategy``
     """
     strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
