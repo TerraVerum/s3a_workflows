@@ -222,6 +222,10 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
                 initKwargs[kw] = kwargs.pop(kw)
         return initKwargs, kwargs
 
+    def addStage(self, stage, *, cache=False, **kwargs):
+        # Changes the 'cache' default to False instead of True in base class
+        return super().addStage(stage, cache=cache, **kwargs)
+
     def addWorkflow(self, workflowClass: t.Type[T], **kwargs) -> T:
         wf = workflowClass(**kwargs)
         return self.addStage(wf)
