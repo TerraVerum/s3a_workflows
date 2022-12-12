@@ -1,5 +1,2 @@
 # Used to specify temporary requirements for packages whose updates are not yet
 # available in on pypi
-pyqtgraph@git+https://github.com/pyqtgraph/pyqtgraph.git@025c5d0
-qtextras@git+https://gitlab.com/s3a/qtextras.git@ddef144
-s3a@git+https://gitlab.com/s3a/s3a.git@fcccc5b

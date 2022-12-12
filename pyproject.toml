@@ -19,11 +19,11 @@ dependencies = [
     "Pillow",
     "pyqtgraph",
     "ruamel.yaml      >= 0.17.0",
-    "s3a              >= 0.6.1",
+    "s3a              >= 0.7.0",
     "scikit-image",
     "scikit-learn",
     "scipy",
-    "qtextras         >= 0.6.5",
+    "qtextras         >= 0.6.6",
     "tqdm",
 ]
 dynamic = ["version"]
