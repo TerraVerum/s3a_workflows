@@ -203,6 +203,10 @@ def dataGeneratorFromIter(**kwargs):
 
 
 def forceDataSharding(dataset):
+    if not hasattr(dataset, "with_options"):
+        return dataset
     options = tf.data.Options()
-    options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.DATA
+    options.experimental_distribute.auto_shard_policy = (
+        tf.data.experimental.AutoShardPolicy.DATA
+    )
     return dataset.with_options(options)
