@@ -226,7 +226,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
             def predictAfterEpoch(epoch, logs):
                 # Calculate test files in function so they can be swapped out by the
                 # user in between epochs if desired
-                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob("*.png"))
+                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob("*.*"))
 
                 # Add 1 to match naming scheme of ModelCheckpoint
                 epoch += 1
