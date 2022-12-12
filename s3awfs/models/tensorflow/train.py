@@ -303,7 +303,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
             legendVisible = pngWf.compositor.legend.isVisible()
             pngWf.compositor.legend.setVisible(False)
         compositorProps = pngWf.compositor.propertiesProc
-        oldSettings = dict(compositorProps.input)
+        oldSettings = dict(compositorProps.parameterCache)
         compositorProps(opacity=0.7)
         for file in tqdm(testImagePaths, desc=f"Saving Predictions to {outputDir}"):
             img = gutils.cvImreadRgb(file, cv.IMREAD_UNCHANGED)
