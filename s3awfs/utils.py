@@ -14,13 +14,21 @@ import cv2 as cv
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
+from pyqtgraph.parametertree import Parameter, interact
+from qtextras import OptionsDict, fns
+from qtextras.typeoverloads import FilePath
 from s3a import generalutils as gutils
-from s3a.parameditors.algcollection import AlgParamEditor
-from utilitys import NestedProcess, ProcessStage, PrjParam
-from utilitys import fns, AtomicProcess
-from utilitys.typeoverloads import FilePath
+from s3a.parameditors.algcollection import AlgorithmEditor, PipelineFunction
+from s3a.processing import PipelineParameter, maybeGetFunction
 
 T = t.TypeVar("T")
+_ParentType = t.Callable[[], "NestedWorkflow"]
+
+
+def getStage(parameter: Parameter) -> PipelineParameter | PipelineFunction | None:
+    if isinstance(parameter, PipelineParameter):
+        return parameter
+    return maybeGetFunction(parameter)
 
 
 def defaultTitle(name, trimExprs, prefix, suffix):
@@ -41,11 +49,15 @@ def titleCase(*args):
 
 # Credit: https://stackoverflow.com/a/37095733/9463643
 def path_is_parent(parent_path, child_path):
-    # Smooth out relative path names, note: if you are concerned about symbolic links, you should use os.path.realpath too
+    # Smooth out relative path names, note: if you are concerned about symbolic links,
+    # you should use os.path.realpath too
     parent_path = os.path.abspath(parent_path)
     child_path = os.path.abspath(child_path)
 
-    # Compare the common path of the parent and child path with the common path of just the parent path. Using the commonpath method on just the parent path will regularise the path name in the same way as the comparison that deals with both paths, removing any trailing path separator
+    # Compare the common path of the parent and child path with the common path of just
+    # the parent path. Using the commonpath method on just the parent path will
+    # regularise the path name in the same way as the comparison that deals with both
+    # paths, removing any trailing path separator
     return parent_path == os.path.commonpath([parent_path, child_path])
 
 
@@ -65,7 +77,7 @@ class RegisteredPath:
         self.title = title
 
     def __set_name__(self, owner, name):
-        # See utilitys.misc.DeferredActionStackMixin for description of why copy() is used
+        # See qtextras.misc.DeferredActionStackMixin for description of why copy() is used
         name = self.title(name, self.trimExprs, self.prefix, self.suffix)
         self.subPath = name
         if self.output:
@@ -76,7 +88,7 @@ class RegisteredPath:
     def __get__(self, obj, objtype):
         if obj is None:
             return self
-        return obj.workflowDir / self.subPath
+        return obj.workflowPath / self.subPath
 
     def __fspath__(self):
         return self.subPath
@@ -84,26 +96,27 @@ class RegisteredPath:
 
 class WorkflowMixin:
     name: str = None
+    parent: _ParentType
 
-    def __init__(self, folder: Path | str = None, parent: NestedWorkflow = None):
+    def __init__(self, folder: Path | str = None):
         self.localFolder = Path(folder or "")
-        self.parent = parent
 
     @property
-    def workflowDir(self):
-        if self.parent:
-            return self.parent.workflowDir / self.localFolder
+    def workflowPath(self):
+        if (parent := self.parent()) and hasattr(parent, "workflowPath"):
+            return parent.workflowPath / self.localFolder
         return self.localFolder
 
     def resetRegisteredPaths(self):
         ...
 
-    def createDirs(self):
+    def createDirectories(self):
         ...
 
 
-class WorkflowDir(AtomicProcess, WorkflowMixin):
+class WorkflowDirectory(PipelineFunction, WorkflowMixin):
     outputPaths: t.Set[str] = set()
+    parent: _ParentType
 
     def __init__(
         self,
@@ -111,7 +124,7 @@ class WorkflowDir(AtomicProcess, WorkflowMixin):
         folder: Path | str = None,
         *,
         reset=False,
-        createDirs=False,
+        createDirectories=False,
         **kwargs,
     ):
         baseName = self.name or type(self).__name__.replace("Workflow", "")
@@ -121,19 +134,18 @@ class WorkflowDir(AtomicProcess, WorkflowMixin):
         if folder is None:
             folder = name
 
-        kwargs.setdefault("interactive", False)
-        AtomicProcess.__init__(self, self.runWorkflow, name=name, **kwargs)
+        PipelineFunction.__init__(self, self.runWorkflow, name=name, **kwargs)
         WorkflowMixin.__init__(self, folder)
 
         if reset:
             self.resetRegisteredPaths()
-        if createDirs:
-            self.createDirs()
+        if createDirectories:
+            self.createDirectories()
 
     def resetRegisteredPaths(self):
         # Sort so parent paths are deleted first during rmtree
         for path in sorted(self.outputPaths):
-            path = self.workflowDir / path
+            path = self.workflowPath / path
             if not path.exists():
                 continue
             if path.is_dir():
@@ -141,20 +153,20 @@ class WorkflowDir(AtomicProcess, WorkflowMixin):
             else:
                 path.unlink()
 
-    def createDirs(self, excludeExprs=(".",)):
+    def createDirectories(self, excludeExprs=(".",)):
         # Sort so parent paths are created first
-        self.workflowDir.mkdir(exist_ok=True)
+        self.workflowPath.mkdir(exist_ok=True)
         for path in sorted(self.outputPaths):
             if any(expr in path for expr in excludeExprs):
                 continue
-            self.workflowDir.joinpath(path).mkdir(exist_ok=True)
+            self.workflowPath.joinpath(path).mkdir(exist_ok=True)
 
     def runWorkflow(self, *args, **kwargs):
         pass
 
 
-class NestedWorkflow(NestedProcess, WorkflowMixin):
-    stages: list[WorkflowDir]
+class NestedWorkflow(PipelineParameter, WorkflowMixin):
+    stages: list[WorkflowDirectory]
 
     def _stageSummaryWidget(self):
         pass
@@ -163,40 +175,45 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
         self,
         name: str = None,
         folder: FilePath = None,
-        createDirs=False,
+        createDirectories=False,
         reset=False,
     ):
-        NestedProcess.__init__(self, name or "<Unnamed>")
+        PipelineParameter.__init__(self, name=name or "<Unnamed>")
         WorkflowMixin.__init__(self, folder or name)
 
         if reset:
             self.resetRegisteredPaths()
-        if createDirs:
-            self.createDirs()
+        if createDirectories:
+            self.createDirectories()
 
-    def disableStages(self, *stageClasses: t.Type[WorkflowDir]):
+        self.setOpts(folder=folder)
+
+    def disableStages(self, *stageClasses: t.Type[WorkflowDirectory]):
         for cls in stageClasses:
             self.get(cls).disabled = True
 
     def saveStringifiedConfig(self, folder: str | Path = None, **initKwargs):
-        state = self.saveState(includeDefaults=True)
-        # Make a dummy process for input parameters just to easily save its state
-        initState = AtomicProcess(
-            self.__init__, name="Initialization", interactive=False, **initKwargs
-        ).saveState(includeDefaults=True)
-        state[self.name].insert(0, initState)
+        state = self.saveState(filter=("defaults", "meta"))
 
         # Some values are unrepresentable in their natural form (e.g. Paths)
         state = stringifyDict(state)
         if folder is None:
-            folder = self.workflowDir
+            folder = self.workflowPath
         fns.saveToFile(state, Path(folder).joinpath("config.yml"))
         return state
+
+    def getTitleAndMaybeMetadata(self, includeMeta=True):
+        title, meta = super().getTitleAndMaybeMetadata()
+        if not includeMeta:
+            return title, meta
+        meta["folder"] = self.localFolder
+        return title, meta
 
     @classmethod
     def splitInitAndRunKwargs(cls, kwargs):
         """
-        Converts a dict of potentially both __init__ keywords and run() keywords into two separate dicts
+        Converts a dict of potentially both __init__ keywords and run() keywords into
+        two separate dicts
         """
         initSpec = set(inspect.signature(cls.__init__).parameters)
         initKwargs = {}
@@ -205,55 +222,59 @@ class NestedWorkflow(NestedProcess, WorkflowMixin):
                 initKwargs[kw] = kwargs.pop(kw)
         return initKwargs, kwargs
 
+    def addStage(self, stage, *, cache=False, **kwargs):
+        # Changes the 'cache' default to False instead of True in base class
+        return super().addStage(stage, cache=cache, **kwargs)
+
     def addWorkflow(self, workflowClass: t.Type[T], **kwargs) -> T:
         wf = workflowClass(**kwargs)
-        return self.addProcess(wf)
-
-    def addProcess(self, process: ProcessStage):
-        if isinstance(process, Workflow_T):
-            process.parent = self
-            # Ensure workflow path is relative to self
-        return super().addProcess(process)
+        return self.addStage(wf)
 
     def resetRegisteredPaths(self):
-        for wf in self.stages:
-            if not wf.disabled:
+        for wf in self:
+            if wf.opts["enabled"]:
                 wf.resetRegisteredPaths()
 
-    def createDirs(self, excludeExprs=(".",)):
-        self.workflowDir.mkdir(exist_ok=True)
-        for wf in self.stages:
-            if not wf.disabled and isinstance(wf, Workflow_T):
-                wf.createDirs(excludeExprs)
+    def createDirectories(self, excludeExprs=(".",)):
+        self.workflowPath.mkdir(exist_ok=True)
+        for wf in self:
+            if not wf.opts["enabled"]:
+                continue
+            if func := maybeGetFunction(wf):
+                wf = func
+            if isinstance(wf, Workflow_T):
+                wf.createDirectories(excludeExprs)
 
     def _getFromRoot(self, root: Workflow_T, wfClassorName):
         # TODO: Prefer stages closer to requesting process
         if (
             not isinstance(wfClassorName, str) and isinstance(root, wfClassorName)
-        ) or root.name == wfClassorName:
+        ) or root.title() == wfClassorName:
             return root
-        for stage in root:
-            if ret := self._getFromRoot(stage, wfClassorName):
+        if not isinstance(root, PipelineParameter):
+            return None
+        for child in root:
+            if ret := self._getFromRoot(getStage(child), wfClassorName):
                 return ret
         # No matches anywhere in the tree
         return None
 
-    def get(self, wfClass: t.Type[T] | str, missingOk=True) -> T:
-        root = self
-        while root.parent is not None:
-            root = root.parent
-        if match := self._getFromRoot(root, wfClass):
+    def get(self, wfClass: t.Type[T] | str, addIfMissing=True) -> T:
+        stage = getStage(self)
+        while (parent := stage.parent()) and getStage(parent):
+            stage = getStage(parent)
+        if match := self._getFromRoot(stage, wfClass):
             return match
         # Stage not present already; add at self's level
-        if missingOk and not isinstance(wfClass, str):
+        if addIfMissing and not isinstance(wfClass, str):
             stage = self.addWorkflow(wfClass)
-            stage.disabled = True
+            stage.setOpts(enabled=False)
             return stage
         # Requested stage type is not present
         raise KeyError(f'Workflow type "{wfClass}" is not present')
 
 
-Workflow_T = (WorkflowDir, NestedWorkflow)
+Workflow_T = (WorkflowDirectory, NestedWorkflow)
 
 
 def argparseHelpAction(nested: NestedWorkflow):
@@ -264,8 +285,8 @@ def argparseHelpAction(nested: NestedWorkflow):
 
         def __call__(self, parser, *args, **kwargs) -> None:
             state = {}
-            for stage in nested.stagesFlattened:
-                pgDict = fns.funcToParamDict(stage.func)
+            for stage in nested.flattenedFunctions():
+                pgDict = interact.functionToParameterDict(stage.function)
                 for child in pgDict["children"]:
                     state[child["name"]] = child
             newCli = fns.makeCli(
@@ -287,15 +308,18 @@ class AliasedMaskResolver:
 
     def __init__(
         self,
-        numberLabelMap=None,
-        labelMasksDir=None,
+        numberLabelMap: pd.Series = None,
+        labelMaskSource=None,
     ):
         """
-        :param numberLabelMap: pd.Series
-            Tracks the relationship between numeric mask values and class labels. Its index is the numeric mask value
-            and the value is the class label (can also be numeric)
+        Parameters
+        ----------
+        numberLabelMap
+            Tracks the relationship between numeric mask values and class labels. Its
+            index is the numeric mask value and the value is the class label (can also
+            be numeric)
         """
-        self.masksDir = labelMasksDir or Path()
+        self.masksDir = labelMaskSource or Path()
         self.hasClassInfo = numberLabelMap is not None
         self.classInfo = None
         if self.hasClassInfo:
@@ -324,7 +348,8 @@ class AliasedMaskResolver:
     @staticmethod
     def createOutputClassMapping(outputClasses: pd.Series):
         """
-        Resolves potential aliases in the output class mapping for unambiguous mask value to class number matching
+        Resolves potential aliases in the output class mapping for unambiguous mask
+        value to class number matching
         """
         classes, numericLabels = np.unique(
             outputClasses.to_numpy(str), return_inverse=True
@@ -353,16 +378,26 @@ class AliasedMaskResolver:
     ):
         """
         A helper function that generates rescaled or RGB versions of label masks
-        :param labelMask: numpy image to transform (or input file containing a mask)
-        :param outputFile: Location to export the transformed image
-        :param colorMap: A string of the Matplotlib color map to use for the generated RGB ground truth segmentation masks.
-            Acceptable color maps are restrained to the following:
-             https://matplotlib.org/stable/tutorials/colors/colormaps.html. If *None*, uses the raw label mask without
-             any changes. If "binary", turns any pixel > 0 to white and any pixel = 0 as black
-        :param numClasses: Total number of classes for scaling rgb values. If *None*, uses the number of classes
-            present in the image. Can also be set to ``self.numClasses`` for global reference.
-        :param resolve: Whether the mask should be resolved (i.e. does it contain numeric aliases?) or not (i.e.
-          was it already resolved from a previous call to ``self.get()``?)
+
+        Parameters
+        ----------
+        labelMask
+            numpy image to transform (or input file containing a mask)
+        outputFile
+            Location to export the transformed image
+        colorMap
+            A string of the Matplotlib color map to use for the generated RGB ground
+            truth segmentation masks. Acceptable color maps are restrained to the
+            following: https://matplotlib.org/stable/tutorials/colors/colormaps.html.
+            If *None*, uses the raw label mask without any changes. If "binary",
+            turns any pixel > 0 to white and any pixel = 0 as black
+        numClasses
+            Total number of classes for scaling rgb values. If *None*, uses the number
+            of classes present in the image. Can also be set to ``self.numClasses`` for
+            global reference.
+        resolve
+            Whether the mask should be resolved (i.e. does it contain numeric aliases?)
+            or not (i.e. was it already resolved from a previous call to ``self.get()``?)
         """
         labelMask = self.getMaybeResolve(labelMask, resolve=resolve)
         if colorMap is None:
@@ -449,28 +484,28 @@ def stringifyDict(item, unconvertable=(pd.DataFrame, pd.Series)):
     return item
 
 
-def columnsAsPrjParams(df, assignToDf=False):
+def columnsAsOptions(df, assignToDf=False):
     cols = list(df.columns)
     for ii, col in enumerate(cols):
-        if not isinstance(col, PrjParam):
-            cols[ii] = PrjParam(col, type(col)())
+        if not isinstance(col, OptionsDict):
+            cols[ii] = OptionsDict(col, type(col)())
     if assignToDf:
         df.columns = cols
         return df
     return cols
 
 
-class DirCreator(WorkflowDir):
+class CreateDirectories(WorkflowDirectory):
     """
     Convenience class to allow creating workflow dirs from a config file
     """
 
     def __init__(self, **kwargs):
-        kwargs.update(folder=".", createDirs=False, name="Create Directories")
+        kwargs.update(folder=".", createDirectories=False)
         super().__init__(**kwargs)
 
     def runWorkflow(self, **kwargs):
-        self.parent.createDirs()
+        self.parent().createDirectories()
 
 
 def pathCtor(constructor, node):
@@ -480,11 +515,11 @@ def pathCtor(constructor, node):
 fns.loader.constructor.add_constructor("!Path", pathCtor)
 
 
-class WorkflowEditor(AlgParamEditor):
+class WorkflowEditor(AlgorithmEditor):
     def _resolveProccessor(self, proc):
         retProc = super()._resolveProccessor(proc)
         if isinstance(retProc, Workflow_T):
             # Only one top processor can exist, so setting the workflow dir on subfolders
-            # will keep each primitive proc at the saveDir level
-            retProc.localFolder = self.saveDir
+            # will keep each primitive proc at the directory level
+            retProc.localFolder = self.directory
         return retProc

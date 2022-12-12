@@ -4,14 +4,15 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from skimage.measure import regionprops_table, regionprops
-
-from s3a import ComponentIO, REQD_TBL_FIELDS as RTF
+from qtextras import fns
+from s3a import REQD_TBL_FIELDS as RTF, ComponentIO
 from s3a.compio.helpers import deserialize
-from utilitys import fns
+from skimage.measure import regionprops, regionprops_table
+
 from . import constants
 from .fmtinput import FormattedInputWorkflow
-from .utils import RegisteredPath, WorkflowDir
+from .utils import RegisteredPath, WorkflowDirectory
+
 
 # -----
 # Various image features
@@ -48,7 +49,7 @@ for unused in [
         propNames.remove(unused)
 
 
-class RegionPropertiesWorkflow(WorkflowDir):
+class RegionPropertiesWorkflow(WorkflowDirectory):
     io = ComponentIO()
 
     regionpropFeaturesFile = RegisteredPath(".csv")  # Concatenated features
@@ -56,7 +57,8 @@ class RegionPropertiesWorkflow(WorkflowDir):
 
     def textAnnToRegionpropsCsv(self, annFile: Path, useFeatures=None, returnDf=False):
         """
-        Creates regionprops features for an S3A annotation file. Must have a "vertices" column
+        Creates regionprops features for an S3A annotation file. Must have a "vertices"
+        column
         """
         if useFeatures is None:
             useFeatures = propNames
@@ -113,25 +115,33 @@ class RegionPropertiesWorkflow(WorkflowDir):
     @fns.dynamicDocstring(availableFeats=propNames)
     def runWorkflow(self, useFeatures: list[str] = None):
         """
-        Creates a table of ``skimage.regionprops`` where each row corresponds to items from annotation vertices
-        :param useFeatures: If given, only these features will be extracted from annotation masks. Can be a list
-          with any of the following items (defaults to all if not provided) -- {availableFeats}
+        Creates a table of ``skimage.regionprops`` where each row corresponds to items
+        from annotation vertices
+
+        Parameters
+        ----------
+        useFeatures
+            If given, only these features will be extracted from annotation masks. Can
+            be a list with any of the following items (defaults to all if not provided)
+            -- {availableFeats}
         """
         if useFeatures is None:
             useFeatures = propNames
         generated = {f.stem for f in self.regionpropFeaturesDir.glob("*.*")}
         newFiles = fns.naturalSorted(
             f
-            for f in self.parent.get(FormattedInputWorkflow).formattedFiles
+            for f in self.parent().get(FormattedInputWorkflow).formattedFiles
             if f.stem not in generated
         )
-        fns.mprocApply(
+        fns.multiprocessApply(
             self.textAnnToRegionpropsCsv,
             newFiles,
             useFeatures=useFeatures,
             descr="Forming Region Properties",
             debug=constants.DEBUG,
         )
-        df = fns.readDataFrameFiles(self.regionpropFeaturesDir, pd.read_csv)
+        df = pd.concat(
+            [pd.read_csv(f) for f in self.regionpropFeaturesDir.glob("*.csv")]
+        )
         df.to_csv(self.regionpropFeaturesFile, index=False)
         return df

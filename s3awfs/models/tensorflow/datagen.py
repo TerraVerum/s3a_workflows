@@ -6,7 +6,7 @@ import cv2 as cv
 import numpy as np
 import tensorflow as tf
 from s3a import generalutils as gutils
-from skimage.measure import regionprops, label
+from skimage.measure import label, regionprops
 from tensorflow.keras.utils import Sequence
 from tensorflow.python.keras.utils.np_utils import to_categorical
 
@@ -16,34 +16,39 @@ from s3awfs.constants import RNG
 class SequenceDataGenerator(Sequence):
     """
     A class that serves as a custom data generator for the Neural Network pipeline.
-    Inputs different file names, reads in image files and masks in batches based on batch size,
-     and returns the batch of data for a specific data type of Train, Validation, or Test.
+    Inputs different file names, reads in image files and masks in batches based on
+    batch size, and returns the batch of data for a specific data type of Train,
+    Validation, or Test.
     """
 
     def __init__(
         self,
         ownedImageNames: list[Path | str],
         imagesDir: Path,
-        labelMasksDir,
-        imageShape,
-        numOutputClasses,
-        batchSize,
+        labelMaskSource: Path,
+        imageShape: int | tuple[int, int],
+        numOutputClasses: int,
+        batchSize: int,
         shuffle=True,
     ):
         """
-        :param ownedImageNames: list
+        Parameters
+        ----------
+        ownedImageNames
             A list of Path object file directories for the specific data type.
-        :param imagesDir: Path
+        imagesDir
             Images to use as inputs data
-        :param labelMasksDir: Path
+        labelMaskSource
             Masks to use as ground truth outputs
-        :param batchSize: int
+        batchSize
             A int of the batch size of the training of the Neural Network.
-        :param imageShape: tuple
+        imageShape
             A size two tuple of the height and width of the image.
-        :param numOutputClasses: Number of total classes present
-        :param shuffle: bool
-            A boolean that indicates whether the data should be shuffled at the end of each epoch.
+        numOutputClasses
+            Number of total classes present
+        shuffle
+            A boolean that indicates whether the data should be shuffled at the end of
+            each epoch.
         """
         np.random.seed(22)
         names = []
@@ -58,7 +63,7 @@ class SequenceDataGenerator(Sequence):
         self.shuffle = shuffle
         self.indexes = np.arange(len(self.ownedImageNames))
         self.numOutputClasses = numOutputClasses
-        self.labelMasksDir = labelMasksDir
+        self.labelMasksDir = labelMaskSource
         self.on_epoch_end()
 
     def __len__(self):
@@ -69,7 +74,8 @@ class SequenceDataGenerator(Sequence):
 
     def __getitem__(self, index):
         """
-        Gets the batch of data with the specified batch size at a specific index of the data.
+        Gets the batch of data with the specified batch size at a specific index of the
+        data.
         """
         start = index * self.batchSize
         end = (index + 1) * self.batchSize
@@ -80,7 +86,8 @@ class SequenceDataGenerator(Sequence):
 
     def on_epoch_end(self):
         """
-        Gets executed at the end of each epoch and recollects all file ids and shuffles the ids if the shuffle parameter is set.
+        Gets executed at the end of each epoch and recollects all file ids and shuffles
+        the ids if the shuffle parameter is set.
         """
         self.indexes = np.arange(len(self.ownedImageNames))
         if self.shuffle:
@@ -89,7 +96,11 @@ class SequenceDataGenerator(Sequence):
     def __data_generation(self, image_names):
         """
         Returns an array of the images and segmentation masks for a batch of data.
-        :param image_names: The file ids of the specific batch of data.
+
+        Parameters
+        ----------
+        image_names
+            The file ids of the specific batch of data.
         """
         num_classes = self.numOutputClasses
         images = np.empty((len(image_names), *self.imageShape), dtype=np.uint8)
@@ -125,7 +136,7 @@ class DataGenIterator:
         self,
         ownedImageNames,
         imagesDir: Path,
-        labelMasksDir,
+        labelMaskSource,
         imageShape,
         numOutputClasses,
         shuffle=True,
@@ -143,7 +154,7 @@ class DataGenIterator:
         self.numOutputClasses = numOutputClasses
         self.imageShape = imageShape
         self.maskShape = (*imageShape[:2], numOutputClasses)
-        self.labelMasksDir = labelMasksDir
+        self.labelMasksDir = labelMaskSource
         if shuffle:
             RNG.shuffle(self.ownedImageNames)
 
@@ -162,11 +173,12 @@ class DataGenIterator:
 
     def __getitem__(self, index):
         """
-        Gets the batch of data with the specified batch size at a specific index of the data.
+        Gets the batch of data with the specified batch size at a specific index of the
+        data.
         """
         name = self.ownedImageNames[index]
         image, mask = self.process_path(name)
-        return (image, to_categorical(mask, self.numOutputClasses))
+        return image, to_categorical(mask, self.numOutputClasses)
 
     def __call__(self):
         yield from iter(self)

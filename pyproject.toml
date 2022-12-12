@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "s3a-workflows"
+description = "Modular, hierarchical S3A data workflows"
+authors = [
+    {name = "Nathan Jessurun", email = "ntjessu@gmail.com"}
+]
+readme = "README.md"
+urls = {homepage = "https://gitlab.com/s3a/s3a-workflows"}
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = [
+    "imageio",
+    "numpy            >= 1.0",
+    "pandas           >= 1.0",
+    "Pillow",
+    "pyqtgraph",
+    "ruamel.yaml      >= 0.17.0",
+    "s3a              >= 0.7.0",
+    "scikit-image",
+    "scikit-learn",
+    "scipy",
+    "qtextras         >= 0.6.6",
+    "tqdm",
+]
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+full = [
+    "s3a[full]"
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "s3awfs.__version__" }
+
+[tool.isort]
+profile = "black"
+reverse_relative = true
+combine_as_imports = true
+
+[tool.black]
+# Use all defaults for now, but keep the header to indicate usage of black
+
+[tool.unimport]
+ignore_init=true
+
+[tool.piptools.compile]
+input_files = ["./pyproject.toml", "requirements-unreleased.txt"]
+output_file = "requirements-pinned.txt"
+verbose = true

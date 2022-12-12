@@ -4,29 +4,27 @@ from functools import lru_cache
 
 import pandas as pd
 import tensorflow as tf
-import tensorflow.keras.backend as K
-from tensorflow.keras import Input
+from qtextras.typeoverloads import FilePath
+from qtextras import bindInteractorOptions as bind
+from s3a import cv2 as cv
+from s3a.generalutils import cvImreadRgb
+from tensorflow.keras import Input, backend as K
 from tensorflow.keras.layers import (
-    Conv2D,
-    BatchNormalization,
     Activation,
-    MaxPooling2D,
     Add,
+    BatchNormalization,
+    Conv2D,
     Conv2DTranspose,
     Dropout,
+    MaxPooling2D,
 )
 from tensorflow.keras.metrics import MeanIoU
-from tensorflow.keras.models import Model
-from tensorflow.keras.models import load_model
-from utilitys import ProcessIO
-from utilitys.typeoverloads import FilePath
-from s3a.generalutils import cvImreadRgb
-from s3a import cv2 as cv
+from tensorflow.keras.models import Model, load_model
 
 from .tensorflow import TensorflowTrainingWorkflow, makeTensorflowStrategy
 from ..png import PngExportWorkflow as PEW
 from ..tvtsplit import TrainValidateTestSplitWorkflow
-from ..utils import NestedWorkflow, WorkflowDir
+from ..utils import NestedWorkflow, WorkflowDirectory
 
 
 def focal_tversky_loss(Y_true, Y_predicted, gamma=0.75):
@@ -73,8 +71,12 @@ class LinkNet:
 
     def __init__(self, inputShape: tuple, numClasses=2, dropout=0.5):
         """
-        :param inputShape: Shape of the images processed by the network (w, h, nchans)
-        :param numClasses: The number of output classes for the Neural Network data.
+        Parameters
+        ----------
+        inputShape
+            Shape of the images processed by the network (w, h, nchans)
+        numClasses
+            The number of output classes for the Neural Network data.
         """
         self.input_tuple = inputShape
         self.input_layer = Input(self.input_tuple)
@@ -258,8 +260,8 @@ def makeLinknetModel(
     strategy=None,
 ):
     """
-    Creates a h5 model file for the specified input layer topology. Optionally, a weights file can be specified
-    to preset layer weights
+    Creates a h5 model file for the specified input layer topology. Optionally,
+    a weights file can be specified to preset layer weights
     """
     strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
@@ -273,7 +275,7 @@ def makeLinknetModel(
         model.save(outputFile)
         model = outputFile
         strategy = None
-    return ProcessIO(
+    return dict(
         model=model,
         strategy=strategy,
         customObjects=customObjects,
@@ -281,23 +283,27 @@ def makeLinknetModel(
     )
 
 
+@bind(
+    file=dict(type="file", value="", nameFilter="Tensorflow Model (*.h5);;"),
+    strategy=dict(ignore=True),
+)
 @lru_cache()
 def loadLinknetModel(file, strategy=None):
     """
-    :param file: h5 model file to load
-    type: filepicker
-    value: ''
-    fileFilter: Tensorflow Model Files (*.h5);;
-    :param strategy: Tensorflow strategy, can be set with ``makeTensorflowStrategy``
-    ignore: True
+    Parameters
+    ----------
+    file
+        Model file to load
+    strategy
+        Disstributed training strategy, can be set with ``makeTensorflowStrategy``
     """
     strategy = strategy or tf.distribute.get_strategy()
     with strategy.scope():
         model = load_model(file, custom_objects=customObjects)
-    return ProcessIO(strategy=strategy, model=model)
+    return dict(strategy=strategy, model=model)
 
 
-class LinknetParamInferrer(WorkflowDir):
+class LinknetParamInferrer(WorkflowDirectory):
     def __init__(self, name=None, folder=None, **kwargs):
         folder = folder or ""
         super().__init__(name, folder, **kwargs)
@@ -307,7 +313,7 @@ class LinknetParamInferrer(WorkflowDir):
         If data parameters are attached to the workflow, grabs the number of classes
         and image size from them
         """
-        tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
+        tvtWf = self.parent().get(TrainValidateTestSplitWorkflow)
         numClasses = None
         if tvtWf.classInfoFile.exists():
             numClasses = pd.read_csv(tvtWf.classInfoFile)["numeric_class"].max() + 1
@@ -324,7 +330,7 @@ class LinknetParamInferrer(WorkflowDir):
             image = cvImreadRgb(imageName, cv.IMREAD_UNCHANGED)
             imageShape = image.shape
 
-        makeLinkWf = self.parent.get("Make Linknet Model", missingOk=False)
+        makeLinkWf = self.parent().get("Make Linknet Model", addIfMissing=False)
         if numClasses is not None:
             makeLinkWf.input["numClasses"] = numClasses
         if imageShape is not None:
@@ -334,17 +340,11 @@ class LinknetParamInferrer(WorkflowDir):
 class LinkNetTrainingWorkflow(NestedWorkflow):
     def __init__(self, name=None, **kwargs):
         super().__init__(folder="")
-        self.addWorkflow(LinknetParamInferrer, interactive=False)
-        self.addFunction(makeTensorflowStrategy, interactive=False)
-        self.addFunction(makeLinknetModel, interactive=False)
+        self.addWorkflow(LinknetParamInferrer)
+        self.addStage(makeTensorflowStrategy)
+        self.addStage(makeLinknetModel)
         # Remove Tf training's directory since extra nesting is unnecessary
-        self.addWorkflow(
-            TensorflowTrainingWorkflow,
-            interactive=False,
-            name=name,
-            folder="",
-            **kwargs
-        )
+        self.addWorkflow(TensorflowTrainingWorkflow, name=name, folder="", **kwargs)
 
     @property
     def tensorWf(self):
@@ -358,7 +358,7 @@ class LinkNetTrainingWorkflow(NestedWorkflow):
         outputDir=None,
     ):
         if modelFile:
-            modelFile = self.workflowDir / modelFile
+            modelFile = self.workflowPath / modelFile
         else:
             modelFile = self.tensorWf.savedModelFile
 
@@ -374,7 +374,7 @@ class LinkNetTrainingWorkflow(NestedWorkflow):
         numClasses=None,
         outputDir=None,
     ):
-        classInfoFile = self.parent.get(TrainValidateTestSplitWorkflow).classInfoFile
+        classInfoFile = self.parent().get(TrainValidateTestSplitWorkflow).classInfoFile
         if numClasses is None and classInfoFile.exists():
             numClasses = len(pd.read_csv(classInfoFile, usecols=["label"]))
         model = makeLinknetModel(numClasses, weightsFile=weightsFile)["model"]

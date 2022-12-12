@@ -11,19 +11,19 @@ from sklearn.decomposition import IncrementalPCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from tqdm import tqdm
 
-from .utils import WorkflowDir, RegisteredPath, NestedWorkflow
 from .tvtsplit import TrainValidateTestSplitWorkflow
+from .utils import RegisteredPath, WorkflowDirectory
 
 
-class FeatureTransformerWorkflow(WorkflowDir):
+class FeatureTransformerWorkflow(WorkflowDirectory):
     transformersDir = RegisteredPath()
     ldaTestPredictions = RegisteredPath(".npy")
 
     # imageFeaturesDir = RegisteredPath()
     def getFeatsLabels(self, df: pd.DataFrame, labels):
         """
-        Turns a dataframe with X rows of MxNx3 component images into a (X x M*N*3) 2 dimensional array where
-        each pixel is a feature and each row is a new sample
+        Turns a dataframe with X rows of MxNx3 component images into a (X x M*N*3) 2
+        dimensional array where each pixel is a feature and each row is a new sample
         """
         feats = np.vstack(df["image"].apply(np.ndarray.ravel))
         inverse = pd.Series(index=labels.values, data=labels.index)
@@ -36,13 +36,21 @@ class FeatureTransformerWorkflow(WorkflowDir):
     ):
         """
          Fits feature transformers like LDA, PCA, etc. on pixel feature data
-         :param featureImageShape: Images are resized to this shape before being processed through transforers.
-           The number of channels is preserved.
-        :param grayscale: If *True*, images are first converted to grayscale.
-        :param partialFitSize: With lots of images, they often do not all fit in memory at the same time.
-          This determines the number if images in a batch during a call to ``transformer.partial_fit
+
+         Parameters
+         ----------
+
+         featureImageShape
+            Images are resized to this shape before being processed through transforers.
+            The number of channels is preserved.
+        grayscale
+            If *True*, images are first converted to grayscale.
+        partialFitSize
+            With lots of images, they often do not all fit in memory at the same time.
+            This determines the number if images in a batch during a call to
+            ``transformer.partial_fit
         """
-        tvt = self.parent.get(TrainValidateTestSplitWorkflow)
+        tvt = self.parent().get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvt.filteredSummaryFile, index_col="dataType")
 
         def batchMaker(dataType):

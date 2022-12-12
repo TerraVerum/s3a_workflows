@@ -1,7 +1,8 @@
 import pydoc
 
-from .utils import WorkflowDir, NestedWorkflow, Workflow_T
-from .__version__ import __version__
+from .utils import NestedWorkflow, Workflow_T, WorkflowDirectory
+
+__version__ = "0.1.0"
 
 # It would be easy enough to automate this, but it is better to ensure proper processing order
 
@@ -28,7 +29,7 @@ def allWorkflows():
 def getWorkflow(moduleStr, returnName=False):
     # False positive
     # noinspection PyTypeChecker
-    wfCls: WorkflowDir = pydoc.locate(f"{__name__}.{moduleStr}")
+    wfCls: WorkflowDirectory = pydoc.locate(f"{__name__}.{moduleStr}")
     name = wfCls.name or moduleStr.split(".")[-1]
     if returnName:
         return wfCls, name

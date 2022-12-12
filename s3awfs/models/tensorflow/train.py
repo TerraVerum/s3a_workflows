@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os.path
 import shutil
-import typing as t
 from pathlib import Path
 
 import cv2 as cv
@@ -12,34 +11,34 @@ import tensorflow as tf
 from s3a import generalutils as gutils
 from tensorboard.backend.event_processing import event_accumulator
 from tensorflow.keras.callbacks import (
-    LambdaCallback,
     EarlyStopping,
-    TensorBoard,
+    LambdaCallback,
     ModelCheckpoint,
+    TensorBoard,
 )
-from tensorflow.keras.models import load_model, Model
+from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
-from utilitys import fns, ProcessIO
-from utilitys.typeoverloads import FilePath
+from qtextras import fns
+from qtextras.typeoverloads import FilePath
 
 from s3awfs.png import PngExportWorkflow
 from s3awfs.tvtsplit import TrainValidateTestSplitWorkflow
-from s3awfs.utils import WorkflowDir, RegisteredPath
+from s3awfs.utils import RegisteredPath, WorkflowDirectory
+
 from .datagen import (
-    dataGeneratorFromIter,
     SequenceDataGenerator,
     SquareMaskSequenceDataGenerator,
-    forceDataSharding
+    dataGeneratorFromIter,
 )
 
 
 def makeTensorflowStrategy(strategyClass="OneDeviceStrategy", devices="/cpu:0"):
     strat = getattr(tf.distribute, strategyClass)
-    return ProcessIO(strategy=strat(devices))
+    return dict(strategy=strat(devices))
 
 
-class TensorflowTrainingWorkflow(WorkflowDir):
+class TensorflowTrainingWorkflow(WorkflowDirectory):
     # Generated during workflow
     graphsDir = RegisteredPath()
     savedModelFile = RegisteredPath(".h5")
@@ -49,7 +48,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
     def runWorkflow(
         self,
         model: Model | FilePath = None,
-        resizeOpts=None,
+        resizeOptions=None,
         customObjects: dict = None,
         compileOpts: dict = None,
         learningRate=0.001,
@@ -65,28 +64,48 @@ class TensorflowTrainingWorkflow(WorkflowDir):
     ):
         """
         Trains a LinkNet model
-        :param model: Keras model to be trained. Can either be a h5 model file or the Model object itself.
-          defaults to ``self.savedModelFile` if unspecified
-        :param resizeOpts: Options for how images are resized, must contain a 'shape' :key
-          with the shape of the model input
-        :param customObjects: Custom objects to be passed during model loading, if any
-        :param compileOpts: Unpacked into `model.compile()` along with Adam loss
-        :param learningRate: Adam learning rate during training
-        :param batchSize: train batch size
-        :param epochs: Number of epochs to train. Early stopping is implemented, so not all epochs might be reached
-        :param predictionDuringTrainPath: At the end of each epoch, predictions will be run on images from this
-          directory if it is specified. They will be visible in a subfolder of ``predictionsDir`` based on their
-          epoch number
-        :param initialEpoch: If above 0, model weights from this epoch will be loaded and the epoch counter will
-          resume at startEpoch+1. Should match the integer representation of the checkpoint model name
-        :param workers: Number of CPU workers for data generation during training. If greater than 1, this uses
-          multiprocessing with ``workers`` number of cores.
-        :param bufferSize: How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this size
-          Only used if workers > 1
-        :param tensorboardUpdatesPerEpoch: Number of times per training epoch tensorboard should update
-        :param strategy: Tensorflow strategy to use during model compilation/training
-        :param convertMasksToBbox: If *True*, semantic masks will be converted into bboxes before training.
-          This is only useful to experiment with the effect of using bboxes on training accuracy
+
+        Parameters
+        ----------
+        model
+            Keras model to be trained. Can either be a h5 model file or the Model
+            object itself. defaults to ``self.savedModelFile` if unspecified
+        resizeOptions
+            Options for how images are resized, must contain a 'shape' key
+            with the shape of the model input
+        customObjects
+            Custom objects to be passed during model loading, if any
+        compileOpts
+            Unpacked into `model.compile()` along with Adam loss
+        learningRate
+            Adam learning rate during training
+        batchSize
+            train batch size
+        epochs
+            Number of epochs to train. Early stopping is implemented, so not all epochs
+            might be reached
+        predictionDuringTrainPath
+            At the end of each epoch, predictions will be run on images from this
+            directory if it is specified. They will be visible in a subfolder of
+            ``predictionsDir`` based on their epoch number
+        initialEpoch
+            If above 0, model weights from this epoch will be loaded and the epoch
+            counter will resume at startEpoch+1. Should match the integer
+            representation of the checkpoint model name
+        workers
+            Number of CPU workers for data generation during training. If greater than
+            1, this uses multiprocessing with ``workers`` number of cores.
+        bufferSize
+            How large of a shuffle buffer to create. Prefetch buffer is 1/10 of this
+            size Only used if workers > 1
+        tensorboardUpdatesPerEpoch
+            Number of times per training epoch tensorboard should update
+        strategy
+            Tensorflow strategy to use during model compilation/training
+        convertMasksToBbox
+            If *True*, semantic masks will be converted into bboxes before training.
+            This is only useful to experiment with the effect of using bboxes on
+            training accuracy
         """
         # Find out how many digits are needed to store the epoch number
         numEpochDigits = len(str(epochs))
@@ -94,8 +113,8 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         epochFormatter = f"{{epoch:0{numEpochDigits}d}}"
         # devices = ["/gpu:0", "/gpu:1", "/gpu:2", "/gpu:3"]
 
-        # Graphs don't play nice with old files
-        # Directory watchers are spawned early, so delete these directories before they have a chance to see them
+        # Graphs don't play nice with old files Directory watchers are spawned early,
+        # so delete these directories before they have a chance to see them
         for item in self.graphsDir.iterdir():
             if item.is_dir():
                 shutil.rmtree(item)
@@ -107,7 +126,7 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             workers = 1
 
         strategy = strategy or tf.distribute.get_strategy()
-        tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
+        tvtWf = self.parent().get(TrainValidateTestSplitWorkflow)
         summaryDf = pd.read_csv(tvtWf.filteredSummaryFile)
         tvtFiles = []
         for typ in tvtWf.TRAIN_NAME, tvtWf.VALIDATION_NAME, tvtWf.TEST_NAME:
@@ -141,13 +160,13 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                     .prefetch(max(1, bufferSize // 10))
                 )
 
-        resizeOpts = resizeOpts or dict(shape=(512, 512))
+        resizeOptions = resizeOptions or dict(shape=(512, 512))
         generators = [
             constructor(
                 ownedImageNames=nameList,
                 imagesDir=dir_ / PEW.imagesDir,
-                labelMasksDir=dir_ / PEW.labelMasksDir,
-                imageShape=(*resizeOpts["shape"], 3),
+                labelMaskSource=dir_ / PEW.labelMasksDir,
+                imageShape=(*resizeOptions["shape"], 3),
                 numOutputClasses=tvtWf.resolver.numClasses,
                 batchSize=batchSize,
                 shuffle=True,
@@ -156,12 +175,12 @@ class TensorflowTrainingWorkflow(WorkflowDir):
                 tvtFiles, [tvtWf.trainDir, tvtWf.validateDir, tvtWf.testDir]
             )
         ]
-        trainGenerator, valGenerator, testGenerator = map(forceDataSharding, generators)
+        trainGenerator, valGenerator, testGenerator = generators
 
         def calcNumBatches(fileList):
             return int(np.floor(len(fileList) / batchSize))
 
-        trainSteps, valSteps, testSteps = map(calcNumBatches, tvtFiles)
+        trainSteps, valSteps, testSteps = [calcNumBatches(lst) for lst in tvtFiles]
 
         overwriteFile = None
         if model is None:
@@ -205,9 +224,9 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             )["label"]
 
             def predictAfterEpoch(epoch, logs):
-                # Calculate test files in function so they can be swapped out by the user in between
-                # epochs if desired
-                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob("*.png"))
+                # Calculate test files in function so they can be swapped out by the
+                # user in between epochs if desired
+                testFiles = fns.naturalSorted(predictionDuringTrainPath.glob("*.*"))
 
                 # Add 1 to match naming scheme of ModelCheckpoint
                 epoch += 1
@@ -244,14 +263,23 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         if overwriteFile is not None:
             # Make sure the updated model replaces the source file
             model.save(overwriteFile)
-        return ProcessIO(model=model)
+        return dict(model=model)
 
     def savePredictions(self, model, testImagePaths, outputDir=None):
         """
-        Generates the prediction masks associated with a specific model on entire Test set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB versions.
-        :param model: The Neural Network model file to generate the predictions of the data.
-        :param testImagePaths: Images to save the predictions of
-        :param outputDir: Where to save the output predictions. Defaults to `self.predictionsDir` if unspecified
+        Generates the prediction masks associated with a specific model on entire Test
+        set of the dataset. Saves the files in Binary, Rescaled, and Rescaled RGB
+        versions.
+
+        Parameters
+        ----------
+        model
+            The Neural Network model file to generate the predictions of the data.
+        testImagePaths
+            Images to save the predictions of
+        outputDir
+            Where to save the output predictions. Defaults to ``self.predictionsDir``
+            if unspecified
         """
         if outputDir is None:
             outputDir = self.predictionsDir
@@ -259,8 +287,8 @@ class TensorflowTrainingWorkflow(WorkflowDir):
         outputDir.mkdir(exist_ok=True)
         legendVisible = None
         try:
-            tvtWf = self.parent.get(TrainValidateTestSplitWorkflow)
-            pngWf = self.parent.get(PngExportWorkflow)
+            tvtWf = self.parent().get(TrainValidateTestSplitWorkflow)
+            pngWf = self.parent().get(PngExportWorkflow)
             labelMap = pd.read_csv(
                 tvtWf.classInfoFile, index_col="numeric_class", dtype=str
             )["label"].drop_duplicates()
@@ -275,8 +303,8 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             legendVisible = pngWf.compositor.legend.isVisible()
             pngWf.compositor.legend.setVisible(False)
         compositorProps = pngWf.compositor.propertiesProc
-        oldSettings = dict(compositorProps.input)
-        compositorProps.run(opacity=0.7)
+        oldSettings = dict(compositorProps.parameterCache)
+        compositorProps(opacity=0.7)
         for file in tqdm(testImagePaths, desc=f"Saving Predictions to {outputDir}"):
             img = gutils.cvImreadRgb(file, cv.IMREAD_UNCHANGED)
             img = np.array([img], dtype=np.uint8)
@@ -287,14 +315,23 @@ class TensorflowTrainingWorkflow(WorkflowDir):
             pngWf.compositor.updateLabelMap(labelMap)
             pngWf.overlayMaskOnImage(img[0], prediction, outFile)
             pngWf.compositor.updateLabelMap(oldMap)
-        compositorProps.run(**oldSettings)
+        compositorProps(**oldSettings)
         if legendVisible is not None:
             pngWf.compositor.legend.setVisible(legendVisible)
 
     def exportTrainingData(self):
         """
-        Uses the tensorboard library to generate a CSV file of the training data for a specific model, with the data containing the specific Loss, Accuracy, Mean IoU, and Dice Coefficient values at each epoch the model is trained. Saves the csv files in the <BASE_PATH>/Graphs/<NETWORK_MODEL>/Training Values path with the training session name as the file name.
-        :return values_df: The dataframe of the different metric values for each training epoch.
+        Uses the tensorboard library to generate a CSV file of the training data for a
+        specific model, with the data containing the specific Loss, Accuracy, Mean IoU,
+        and Dice Coefficient values at each epoch the model is trained. Saves the csv
+        files in the <BASE_PATH>/Graphs/<NETWORK_MODEL>/Training Values path with the
+        training session name as the file name.
+
+        Returns
+        -------
+        values_df : pd.DataFrame
+            The dataframe of the different metric values for each
+            training epoch.
         """
         for subpath in "train", "validation":
             self.graphsDir.joinpath(subpath).mkdir(exist_ok=True)

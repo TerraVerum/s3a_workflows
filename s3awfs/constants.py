@@ -1,7 +1,7 @@
 import numpy as np
 from s3a.constants import PRJ_ENUMS
 
-DEFAULT_RESIZE_OPTS = dict(shape=(512, 512), rotationDeg=PRJ_ENUMS.ROT_OPTIMAL)
+DEFAULT_RESIZE_OPTS = dict(shape=(512, 512), rotationDegrees=PRJ_ENUMS.ROTATION_OPTIMAL)
 
 # Determines whether multiprocessing uses multiple cores or is disabled
 DEBUG = True

@@ -1,7 +1,7 @@
 import sys
 
+from qtextras import fns
 from s3a import mkQApp
-from utilitys import fns, ProcessIO
 
 from s3awfs import allWorkflows
 from s3awfs.main import MainWorkflow
@@ -19,7 +19,7 @@ def main_cli():
             "action",
             "help",
             argparseHelpAction(
-                MainWorkflow("garbageasdf", allWorkflows(), createDirs=False)
+                MainWorkflow("garbageasdf", allWorkflows(), createDirectories=False)
             ),
         )
         parser.add_argument("--help", action="help")
