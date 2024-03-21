@@ -42,7 +42,7 @@ pillow==9.3.0
     #   scikit-image
 pyparsing==3.0.9
     # via packaging
-pyqtgraph @ git+https://github.com/pyqtgraph/pyqtgraph.git@025c5d0
+pyqtgraph==0.13.3
     # via
     #   -r requirements-unreleased.txt
     #   qtextras

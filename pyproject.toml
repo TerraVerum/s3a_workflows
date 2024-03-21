@@ -25,6 +25,9 @@ dependencies = [
     "scipy",
     "qtextras         >= 0.6.6",
     "tqdm",
+    "opencv-python-headless",
+    "pyside6",
+    "matplotlib",
 ]
 dynamic = ["version"]
 classifiers = [
