@@ -65,7 +65,7 @@ class RegisteredPath:
     def __init__(
         self,
         suffix="",
-        prefix: str | RegisteredPath = None,
+        prefix: str | RegisteredPath | None = None,
         trimExprs=("file", "path", "dir"),
         title: t.Callable = defaultTitle,
         output=True,
@@ -93,12 +93,11 @@ class RegisteredPath:
     def __fspath__(self):
         return self.subPath
 
-
 class WorkflowMixin:
-    name: str = None
+    name: str | None = None
     parent: _ParentType
 
-    def __init__(self, folder: Path | str = None):
+    def __init__(self, folder: FilePath | Path | str | None = None):
         self.localFolder = Path(folder or "")
 
     @property
@@ -120,8 +119,8 @@ class WorkflowDirectory(PipelineFunction, WorkflowMixin):
 
     def __init__(
         self,
-        name: str = None,
-        folder: Path | str = None,
+        name: str | None = None,
+        folder: Path | str | None = None,
         *,
         reset=False,
         createDirectories=False,
@@ -173,12 +172,12 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
 
     def __init__(
         self,
-        name: str = None,
-        folder: FilePath = None,
+        name: str | None = None,
+        folder: FilePath | str | None = None,
         createDirectories=False,
         reset=False,
     ):
-        PipelineParameter.__init__(self, name=name or "<Unnamed>")
+        PipelineParameter.__init__(self, name = name or "<Unnamed>")
         WorkflowMixin.__init__(self, folder or name)
 
         if reset:
