@@ -9,7 +9,8 @@ import shutil
 import tempfile
 import typing as t
 from pathlib import Path
-
+from typing import List
+import warnings
 import cv2 as cv
 import numpy as np
 import pandas as pd
@@ -19,21 +20,43 @@ from qtextras import OptionsDict, fns
 from qtextras.typeoverloads import FilePath
 from s3a import generalutils as gutils
 from s3a.parameditors.algcollection import AlgorithmEditor, PipelineFunction
-from s3a.processing import PipelineParameter, maybeGetFunction
+from s3a.processing import PipelineParameter, maybe_get_function
 
 T = t.TypeVar("T")
 _ParentType = t.Callable[[], "NestedWorkflow"]
 
 
-def getStage(parameter: Parameter) -> PipelineParameter | PipelineFunction | None:
+def get_stage(parameter: Parameter) -> PipelineParameter | PipelineFunction | None:
+    """If parameter is a PipelineParameter, returns that. Else, returns the PipelineFunction
+    if it has one, else None.
+
+    Args:
+        parameter (Parameter): parameter
+
+    Returns:
+        PipelineParameter | PipelineFunction | None: An oddly parametric return
+    """
     if isinstance(parameter, PipelineParameter):
         return parameter
-    return maybeGetFunction(parameter)
+    return maybe_get_function(parameter)
 
 
-def defaultTitle(name, trimExprs, prefix, suffix):
+def default_title(
+    name: str, trim_exprs: List[str], prefix: RegisteredPath | str | None, suffix: str
+) -> Path | str:
+    """Turns the given name into a title with the given customization options.
+
+    Args:
+        name (str): Pascal case title
+        trim_exprs (List[str]): Expressions to remove from the name
+        prefix (RegisteredPath | str | None): Prefix to prepend to the name
+        suffix (str): Suffix to add to the name
+
+    Returns:
+        Path | str: Title formatted name
+    """
     name = fns.pascalCaseToTitle(name).replace(" ", "_").lower() + suffix
-    for suff in trimExprs:
+    for suff in trim_exprs:
         name = re.sub(f"_?{suff}", "", name)
     if isinstance(prefix, RegisteredPath):
         name = os.path.join(prefix.subPath, name)
@@ -42,9 +65,16 @@ def defaultTitle(name, trimExprs, prefix, suffix):
     return name
 
 
-def titleCase(*args):
-    name = defaultTitle(*args)
-    return fns.pascalCaseToTitle(name)
+def title_case(*args) -> Path | str:
+    """Passthrough to default_title.
+
+    Returns:
+        Path | str: the return from default_title
+    """
+    warnings.warn(
+        "The title_case function is deprecated", DeprecationWarning, stacklevel=2
+    )
+    return default_title(*args)
 
 
 # Credit: https://stackoverflow.com/a/37095733/9463643
@@ -67,7 +97,7 @@ class RegisteredPath:
         suffix="",
         prefix: str | RegisteredPath | None = None,
         trimExprs=("file", "path", "dir"),
-        title: t.Callable = defaultTitle,
+        title: t.Callable = default_title,
         output=True,
     ):
         self.prefix = prefix
@@ -93,6 +123,7 @@ class RegisteredPath:
     def __fspath__(self):
         return self.subPath
 
+
 class WorkflowMixin:
     name: str | None = None
     parent: _ParentType
@@ -106,11 +137,9 @@ class WorkflowMixin:
             return parent.workflowPath / self.localFolder
         return self.localFolder
 
-    def resetRegisteredPaths(self):
-        ...
+    def resetRegisteredPaths(self): ...
 
-    def createDirectories(self):
-        ...
+    def createDirectories(self): ...
 
 
 class WorkflowDirectory(PipelineFunction, WorkflowMixin):
@@ -177,7 +206,7 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
         createDirectories=False,
         reset=False,
     ):
-        PipelineParameter.__init__(self, name = name or "<Unnamed>")
+        PipelineParameter.__init__(self, name=name or "<Unnamed>")
         WorkflowMixin.__init__(self, folder or name)
 
         if reset:
@@ -239,7 +268,7 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
         for wf in self:
             if not wf.opts["enabled"]:
                 continue
-            if func := maybeGetFunction(wf):
+            if func := maybe_get_function(wf):
                 wf = func
             if isinstance(wf, Workflow_T):
                 wf.createDirectories(excludeExprs)
@@ -253,15 +282,15 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
         if not isinstance(root, PipelineParameter):
             return None
         for child in root:
-            if ret := self._getFromRoot(getStage(child), wfClassorName):
+            if ret := self._getFromRoot(get_stage(child), wfClassorName):
                 return ret
         # No matches anywhere in the tree
         return None
 
     def get(self, wfClass: t.Type[T] | str, addIfMissing=True) -> T:
-        stage = getStage(self)
-        while (parent := stage.parent()) and getStage(parent):
-            stage = getStage(parent)
+        stage = get_stage(self)
+        while (parent := stage.parent()) and get_stage(parent):
+            stage = get_stage(parent)
         if match := self._getFromRoot(stage, wfClass):
             return match
         # Stage not present already; add at self's level
@@ -436,6 +465,7 @@ def getLinkFunc():
     """
     Symlinks rarely have permission by default on windows so be able to copy if needed
     """
+
     # Use symlinks to avoid lots of file duplication
     def relativeSymlink(src, dst):
         return os.symlink(os.path.relpath(src, os.path.dirname(dst)), dst)
