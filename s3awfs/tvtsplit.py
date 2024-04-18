@@ -35,7 +35,7 @@ class LabelMaskResolverWorkflow(WorkflowDirectory):
             color: self.rgbMasksDir for color in fns.listAllPgColormaps()
         }
 
-    def runWorkflow(
+    def run_workflow(
         self,
         labelMaskFiles: t.List[Path | np.ndarray],
         resolver: AliasedMaskResolver,
@@ -131,7 +131,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDirectory):
     filteredSummaryFile = RegisteredPath(".csv")
     classInfoFile = RegisteredPath(".csv")
 
-    def runWorkflow(
+    def run_workflow(
         self,
         labelMap: pd.DataFrame | str | Path = None,
         balanceClasses=True,
@@ -216,7 +216,7 @@ class TrainValidateTestSplitWorkflow(WorkflowDirectory):
         df = dirAndData["data"]
         maskWf = LabelMaskResolverWorkflow(destDir, createDirectories=True)
         # MaskWf generates colored, normal, and binary scaled masks
-        maskWf.runWorkflow(
+        maskWf.run_workflow(
             df["compImageFile"].apply(lambda el: exportWf.labelMasksDir / el),
             self.resolver,
             maskColors=self.input["maskColors"],
@@ -327,8 +327,8 @@ class TrainValidateTestSplitWorkflow(WorkflowDirectory):
         summaryDf.loc[valIds, "dataType"] = self.VALIDATION_NAME
         return summaryDf
 
-    def createDirectories(self, excludeExprs=(".",)):
-        super().createDirectories(excludeExprs)
+    def create_directories(self, excludeExprs=(".",)):
+        super().create_directories(excludeExprs)
         for sub in PngExportWorkflow.imagesDir, PngExportWorkflow.labelMasksDir:
             for parent in self.trainDir, self.validateDir, self.testDir:
                 toCreate = parent / sub

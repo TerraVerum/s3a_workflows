@@ -3,13 +3,15 @@ from __future__ import annotations
 import argparse
 import functools
 import inspect
+from os import PathLike
 import os.path
+from posixpath import abspath
 import re
 import shutil
 import tempfile
 import typing as t
 from pathlib import Path
-from typing import List
+from typing import AnyStr, List
 import warnings
 import cv2 as cv
 import numpy as np
@@ -59,7 +61,7 @@ def default_title(
     for suff in trim_exprs:
         name = re.sub(f"_?{suff}", "", name)
     if isinstance(prefix, RegisteredPath):
-        name = os.path.join(prefix.subPath, name)
+        name = os.path.join(prefix.sub_path, name)
     elif prefix:
         name = prefix + name
     return name
@@ -77,69 +79,89 @@ def title_case(*args) -> Path | str:
     return default_title(*args)
 
 
-# Credit: https://stackoverflow.com/a/37095733/9463643
-def path_is_parent(parent_path, child_path):
-    # Smooth out relative path names, note: if you are concerned about symbolic links,
-    # you should use os.path.realpath too
+def path_is_parent(parent_path: str, child_path: str) -> bool:
+    """Determine if one path is the parent of another.
+
+    Args:
+        parent_path (str): Suggested parent path
+        child_path (str): Suggested child path
+
+    Returns:
+        bool: Parent path is in fact the parent of child path
+    """
     parent_path = os.path.abspath(parent_path)
     child_path = os.path.abspath(child_path)
 
-    # Compare the common path of the parent and child path with the common path of just
-    # the parent path. Using the commonpath method on just the parent path will
-    # regularise the path name in the same way as the comparison that deals with both
-    # paths, removing any trailing path separator
     return parent_path == os.path.commonpath([parent_path, child_path])
 
 
 class RegisteredPath:
+    """Registered path encapuslates a path with a concept of title and owner.
+    Owner is an external object containing paths."""
+
     def __init__(
         self,
+        name="",
         suffix="",
         prefix: str | RegisteredPath | None = None,
-        trimExprs=("file", "path", "dir"),
+        trim_exprs=("file", "path", "dir"),
         title: t.Callable = default_title,
         output=True,
     ):
+        self.name = name
+        self.sub_path = None
         self.prefix = prefix
         self.suffix = suffix
-        self.trimExprs = trimExprs
+        self.trim_exprs = trim_exprs
         self.output = output
         self.title = title
 
     def __set_name__(self, owner, name):
         # See qtextras.misc.DeferredActionStackMixin for description of why copy() is used
-        name = self.title(name, self.trimExprs, self.prefix, self.suffix)
-        self.subPath = name
+        name = self.title(name, self.trim_exprs, self.prefix, self.suffix)
+        self.sub_path = name
         if self.output:
             paths = owner.outputPaths.copy()
             paths.add(name)
             owner.outputPaths = paths
 
-    def __get__(self, obj, objtype):
+    def __get__(self, obj, _):
         if obj is None:
             return self
-        return obj.workflowPath / self.subPath
+        return obj.workflowPath / self.sub_path
 
     def __fspath__(self):
-        return self.subPath
+        return self.sub_path
 
 
 class WorkflowMixin:
+    """Mixin of vague purpose, seems to be a fancy way to get the local folder on
+    parent or just local folder if no parent"""
+
     name: str | None = None
     parent: _ParentType
 
     def __init__(self, folder: FilePath | Path | str | None = None):
-        self.localFolder = Path(folder or "")
+        """Create an instance of hte WorkflowMixin
+
+        Args:
+            folder (FilePath | Path | str | None, optional): The local folder that is of some importance. Defaults to None.
+        """
+        self.local_folder = Path(folder or "")
 
     @property
-    def workflowPath(self):
-        if (parent := self.parent()) and hasattr(parent, "workflowPath"):
-            return parent.workflowPath / self.localFolder
-        return self.localFolder
+    def workflow_path(self) -> FilePath | Path | str | None:
+        """Get the workflow path with parent if known, else local path only.
 
-    def resetRegisteredPaths(self): ...
+        Returns:
+            FilePath | Path | str | None: The workflow path
+        """
+        if hasattr(self.parent, "workflowPath"):
+            return self.parent.workflowPath / self.local_folder
+        return self.local_folder
 
-    def createDirectories(self): ...
+    def reset_registered_paths(self): ...
+    def create_directories(self): ...
 
 
 class WorkflowDirectory(PipelineFunction, WorkflowMixin):
@@ -152,25 +174,25 @@ class WorkflowDirectory(PipelineFunction, WorkflowMixin):
         folder: Path | str | None = None,
         *,
         reset=False,
-        createDirectories=False,
+        create_directories=False,
         **kwargs,
     ):
-        baseName = self.name or type(self).__name__.replace("Workflow", "")
-        defaultName = fns.pascalCaseToTitle(baseName)
-        name = name or defaultName
+        base_name = self.name or type(self).__name__.replace("Workflow", "")
+        default_name = fns.pascalCaseToTitle(base_name)
+        name = name or default_name
 
         if folder is None:
             folder = name
 
-        PipelineFunction.__init__(self, self.runWorkflow, name=name, **kwargs)
+        PipelineFunction.__init__(self, self.run_workflow, name=name, **kwargs)
         WorkflowMixin.__init__(self, folder)
 
         if reset:
-            self.resetRegisteredPaths()
-        if createDirectories:
-            self.createDirectories()
+            self.reset_registered_paths()
+        if create_directories:
+            self.create_directories()
 
-    def resetRegisteredPaths(self):
+    def reset_registered_paths(self):
         # Sort so parent paths are deleted first during rmtree
         for path in sorted(self.outputPaths):
             path = self.workflowPath / path
@@ -181,15 +203,21 @@ class WorkflowDirectory(PipelineFunction, WorkflowMixin):
             else:
                 path.unlink()
 
-    def createDirectories(self, excludeExprs=(".",)):
+    def create_directories(self, exclude_exprs=(".",)):
+        """Creates output paths"
+
+        Args:
+            exclude_exprs (tuple, optional): Expressions which if found in an output path are to prevent it's creation by this function. Defaults to (".",).
+        """
         # Sort so parent paths are created first
         self.workflowPath.mkdir(exist_ok=True)
         for path in sorted(self.outputPaths):
-            if any(expr in path for expr in excludeExprs):
+            if any(expr in path for expr in exclude_exprs):
                 continue
             self.workflowPath.joinpath(path).mkdir(exist_ok=True)
 
-    def runWorkflow(self, *args, **kwargs):
+    def run_workflow(self, *args, **kwargs):
+        """Stub"""
         pass
 
 
@@ -210,9 +238,9 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
         WorkflowMixin.__init__(self, folder or name)
 
         if reset:
-            self.resetRegisteredPaths()
+            self.reset_registered_paths()
         if createDirectories:
-            self.createDirectories()
+            self.create_directories()
 
         self.setOpts(folder=folder)
 
@@ -258,12 +286,12 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
         wf = workflowClass(**kwargs)
         return self.addStage(wf)
 
-    def resetRegisteredPaths(self):
+    def reset_registered_paths(self):
         for wf in self:
             if wf.opts["enabled"]:
                 wf.resetRegisteredPaths()
 
-    def createDirectories(self, excludeExprs=(".",)):
+    def create_directories(self, excludeExprs=(".",)):
         self.workflowPath.mkdir(exist_ok=True)
         for wf in self:
             if not wf.opts["enabled"]:
@@ -271,7 +299,7 @@ class NestedWorkflow(PipelineParameter, WorkflowMixin):
             if func := maybe_get_function(wf):
                 wf = func
             if isinstance(wf, Workflow_T):
-                wf.createDirectories(excludeExprs)
+                wf.create_directories(excludeExprs)
 
     def _getFromRoot(self, root: Workflow_T, wfClassorName):
         # TODO: Prefer stages closer to requesting process
@@ -533,8 +561,8 @@ class CreateDirectories(WorkflowDirectory):
         kwargs.update(folder=".", createDirectories=False)
         super().__init__(**kwargs)
 
-    def runWorkflow(self, **kwargs):
-        self.parent().createDirectories()
+    def run_workflow(self, **kwargs):
+        self.parent().create_directories()
 
 
 def pathCtor(constructor, node):
@@ -550,5 +578,5 @@ class WorkflowEditor(AlgorithmEditor):
         if isinstance(retProc, Workflow_T):
             # Only one top processor can exist, so setting the workflow dir on subfolders
             # will keep each primitive proc at the directory level
-            retProc.localFolder = self.directory
+            retProc.local_folder = self.directory
         return retProc

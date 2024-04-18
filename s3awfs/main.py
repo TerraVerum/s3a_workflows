@@ -64,9 +64,9 @@ class MainWorkflow(NestedWorkflow):
 
         # Defer until here since now stages will exist
         if reset:
-            self.resetRegisteredPaths()
+            self.reset_registered_paths()
         if createDirectories:
-            self.createDirectories()
+            self.create_directories()
 
     @classmethod
     def fromConfig(

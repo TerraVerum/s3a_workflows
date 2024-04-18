@@ -31,7 +31,7 @@ class FeatureTransformerWorkflow(WorkflowDirectory):
         return feats, labels
 
     # @fns.dynamicDocstring(transformers=list(transformers))
-    def runWorkflow(
+    def run_workflow(
         self, featureImageShape=(50, 50), grayscale=False, partialFitSize=1000
     ):
         """

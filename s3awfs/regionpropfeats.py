@@ -113,7 +113,7 @@ class RegionPropertiesWorkflow(WorkflowDirectory):
             return propsDf
 
     @fns.dynamicDocstring(availableFeats=propNames)
-    def runWorkflow(self, useFeatures: list[str] = None):
+    def run_workflow(self, useFeatures: list[str] = None):
         """
         Creates a table of ``skimage.regionprops`` where each row corresponds to items
         from annotation vertices

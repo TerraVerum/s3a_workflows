@@ -42,7 +42,6 @@ class ComponentImagesWorkflow(WorkflowDirectory):
     hasDummyLabel: bool
 
     def __init__(self, *args, **kwargs):
-
         """
         Initializes the workflow with a location and set of data parameters
         """
@@ -308,7 +307,7 @@ class ComponentImagesWorkflow(WorkflowDirectory):
         featsConcat.to_pickle(self.compImgsFile, compression=compressionOptions)
         return featsConcat
 
-    def runWorkflow(
+    def run_workflow(
         self,
         imagesPath=None,
         s3aProject: FilePath | dict = None,

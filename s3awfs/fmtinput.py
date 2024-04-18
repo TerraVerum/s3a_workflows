@@ -33,7 +33,7 @@ class FormattedInputWorkflow(WorkflowDirectory):
         super().__init__(*args, **kwargs)
         self.augmentor = ComponentGenerator()
 
-    def runWorkflow(
+    def run_workflow(
         self,
         annotationsPath: FilePath = None,
         augmentationOptions: dict = None,

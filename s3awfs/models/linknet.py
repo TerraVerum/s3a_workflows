@@ -308,7 +308,7 @@ class LinknetParamInferrer(WorkflowDirectory):
         folder = folder or ""
         super().__init__(name, folder, **kwargs)
 
-    def runWorkflow(self, **kwargs):
+    def run_workflow(self, **kwargs):
         """
         If data parameters are attached to the workflow, grabs the number of classes
         and image size from them

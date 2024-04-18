@@ -34,7 +34,7 @@ class PngExportWorkflow(WorkflowDirectory):
         self.compositor = widgets.MaskCompositor()
         self.compositor.propertiesProc(colormap=constants.DEFAULT_RGB_CMAP)
 
-    def runWorkflow(
+    def run_workflow(
         self,
         overlayOptions=None,
     ):
@@ -165,4 +165,4 @@ class PngExportWorkflow(WorkflowDirectory):
         return compositor
 
     def __reduce__(self):
-        return PngExportWorkflow, (self.name, self.localFolder)
+        return PngExportWorkflow, (self.name, self.local_folder)

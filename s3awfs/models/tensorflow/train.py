@@ -46,7 +46,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
     checkpointsDir = RegisteredPath()
     predictionsDir = RegisteredPath()
 
-    def runWorkflow(
+    def run_workflow(
         self,
         model: Model | FilePath = None,
         resizeOptions=None,
@@ -181,7 +181,7 @@ class TensorflowTrainingWorkflow(WorkflowDirectory):
         def calcNumBatches(fileList):
             return int(np.floor(len(fileList) / batchSize))
 
-        trainSteps, valSteps, testSteps =  map(calcNumBatches, tvtFiles)
+        trainSteps, valSteps, testSteps = map(calcNumBatches, tvtFiles)
 
         overwriteFile = None
         if model is None:
